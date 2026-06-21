@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agents-monitoring"
+version = "0.1.0"
+description = "Keep your AI coding agents (Claude Code, Codex, …) alive in tmux and watch their status — dependency-free."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "petrludwig-collab" }]
+keywords = ["tmux", "claude-code", "codex", "monitoring", "supervisor", "keepalive", "agents"]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/petrludwig-collab/Agents-Monitoring"
+
+[project.scripts]
+agentsmon = "agentsmon.__main__:main"
+
+[tool.setuptools]
+packages = ["agentsmon"]
