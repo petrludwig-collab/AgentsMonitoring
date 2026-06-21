@@ -21,8 +21,10 @@ RESTART_DEFAULTS = {
 }
 MATCH_KEYWORD = {"claude-code": "claude", "codex": "codex", "aider": "aider", "gemini": "gemini"}
 COMMON_DAEMONS = [
-    {"name": "OpenClaw", "pattern": "openclaw", "health_url": "http://127.0.0.1:18789/health"},
-    {"name": "Hermes", "pattern": "hermes"},
+    {"name": "OpenClaw", "pattern": "openclaw", "health_url": "http://127.0.0.1:18789/health",
+     "restart": "nohup openclaw gateway > ~/openclaw.log 2>&1 &"},
+    {"name": "Hermes", "pattern": "hermes_cli.main gateway",
+     "restart": "nohup hermes gateway run --replace > ~/hermes.log 2>&1 &"},
 ]
 
 
@@ -88,7 +90,13 @@ def run() -> int:
     for d in COMMON_DAEMONS:
         if subprocess.run(["pgrep", "-f", d["pattern"]], capture_output=True).returncode == 0:
             if _yes(f"Watch daemon '{d['name']}' (detected running)?"):
-                daemons.append(d)
+                entry = {k: v for k, v in d.items() if k != "restart"}
+                # A restart command lets keepalive revive it (and start it on boot); empty = monitor only.
+                restart = _ask(f"    restart command for '{d['name']}' if it dies "
+                               "(empty = monitor only)", d.get("restart", ""))
+                if restart:
+                    entry["restart"] = restart
+                daemons.append(entry)
 
     port = _ask("\nDashboard port", "8765")
     host = _ask("Dashboard host (127.0.0.1 = this machine only)", "127.0.0.1")
