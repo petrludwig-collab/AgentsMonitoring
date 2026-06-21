@@ -42,6 +42,8 @@ def _write_launcher() -> Path:
 # dashboard only if it isn't running, then runs one keepalive pass (a no-op if disabled / no agents).
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 export PYTHONPATH="{_pythonpath()}"
+export AGENTSMON_CONFIG="{config.DEFAULT_PATH}"
+export AGENTSMON_STATE="{config.state_dir()}"
 PY="{_python()}"
 mkdir -p "{state}"
 pgrep -f "agentsmon dashboard" >/dev/null 2>&1 || \\
