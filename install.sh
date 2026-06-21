@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$PWD" 2>/dev/null || cd "$HOME" 2>/dev/null || cd /
 
-REPO="https://github.com/petrludwig-collab/Agents-Monitoring.git"
+REPO="https://github.com/petrludwig-collab/AgentsMonitoring.git"
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 err() { printf '\033[1;31mError:\033[0m %s\n' "$*" >&2; exit 1; }
 

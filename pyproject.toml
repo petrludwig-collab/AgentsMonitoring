@@ -14,7 +14,7 @@ keywords = ["tmux", "claude-code", "codex", "monitoring", "supervisor", "keepali
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/petrludwig-collab/Agents-Monitoring"
+Homepage = "https://github.com/petrludwig-collab/AgentsMonitoring"
 
 [project.scripts]
 agentsmon = "agentsmon.__main__:main"
