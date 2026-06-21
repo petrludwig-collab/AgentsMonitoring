@@ -379,17 +379,39 @@ def discover_agents(extra_matches: list[tuple] | None = None, now: float | None 
     return agents
 
 
+def _tokens_under_telegram(obj, in_tg: bool = False) -> list[str]:
+    """Bot-token-shaped strings (``<digits>:<secret>``) located anywhere under a key containing
+    'telegram' — so we pick up the Telegram bot token however it's nested, but never an unrelated
+    token (e.g. a gateway secret) elsewhere in the config."""
+    found: list[str] = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            found += _tokens_under_telegram(v, in_tg or ("telegram" in str(k).lower()))
+    elif isinstance(obj, list):
+        for v in obj:
+            found += _tokens_under_telegram(v, in_tg)
+    elif in_tg and isinstance(obj, str) and re.match(r"\d{6,}:[A-Za-z0-9_-]{30,}$", obj):
+        found.append(obj)
+    return found
+
+
 def _openclaw_telegram_bot() -> str:
     """OpenClaw's OWN Telegram bot @username (it doesn't use Agent2Telegram), resolved from its
-    config's botToken via getMe. Best-effort, called once at setup — not per render. '' if absent."""
+    config via getMe — searching wherever the token lives under a 'telegram' key. Best-effort,
+    called once at setup / migration, not per render."""
     try:
         d = json.loads((Path.home() / ".openclaw" / "openclaw.json").read_text("utf-8"))
-        accounts = (((d.get("channels") or {}).get("telegram") or {}).get("accounts") or {})
-        tok = next((a["botToken"] for a in accounts.values()
-                    if isinstance(a, dict) and a.get("botToken")), "")
-        return _getme_username(tok) if tok else ""
-    except Exception:
+    except (OSError, ValueError):
         return ""
+    seen: set[str] = set()
+    for tok in _tokens_under_telegram(d):
+        if tok in seen:
+            continue
+        seen.add(tok)
+        u = _getme_username(tok)
+        if u:
+            return u
+    return ""
 
 
 def _getme_username(token: str) -> str:
