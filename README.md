@@ -124,6 +124,10 @@ hash (`dashboard.auth.pwhash`), never in plaintext. Remove the `auth` block to t
   red/gold/green/blue).
 - **pinned_daemons[].health_url** — give a pinned daemon a health endpoint and its **latency**
   is shown in the Status column (in place of "Running").
+- **services[].metric** — the card's third metric: `latency` (this service's current latency,
+  default), `system_latency` (average current latency across **all** health‑checked components —
+  a system overview number), `avg_latency` (this service's average over the SLA window), or
+  `agents` (running tmux‑agent count).
 - **agents[].tag / agents[].vendor** — override the model label and tag colour shown for a
   detected agent (otherwise the detected type + maker colour are used).
 - **probe.min_outage_samples** — how many consecutive failed probes count as a real outage for

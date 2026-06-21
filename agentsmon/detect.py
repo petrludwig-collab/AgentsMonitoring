@@ -91,6 +91,7 @@ def pinned_agents(pinned: list[dict]) -> list[dict]:
             "name": d.get("name"), "kind": "daemon", "label": d.get("tag", d.get("name")),
             "vendor": d.get("vendor"), "name_color": d.get("name_color"),
             "session_id": None, "alive": bool(pids), "age": age, "latency_ms": lat,
+            "health_url": d.get("health_url"),
         })
     return out
 
