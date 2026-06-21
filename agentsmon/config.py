@@ -32,6 +32,8 @@ DEFAULTS = {
     # Non-tmux processes to pin at the TOP of the Persistent-agents table (e.g. OpenClaw, Hermes).
     # Each: name, process (pgrep -f), tag (display label), vendor (anthropic|openai|google for the tag colour).
     "pinned_daemons": [],
+    # Name of the agent/daemon that is the orchestrator (the main one) — shown first and highlighted.
+    "orchestrator": "",
     "dashboard": {"host": "127.0.0.1", "port": 8765, "poll_seconds": 15},
     "probe": {"interval_seconds": 60, "sla_window_days": 90, "timeline_days": 90, "min_outage_samples": 3},
     "keepalive": {"enabled": True, "interval_seconds": 60},

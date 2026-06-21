@@ -184,8 +184,10 @@ function renderAgents(root, agents){
     const tr=document.createElement("tr"); tr.className="border-b border-slate-100 last:border-0";
     const nameBg=NAME_BG[a.name_color];
     const nameCell=nameBg?`<span class="inline-block rounded px-1.5 py-0.5 ${nameBg}">${esc(a.name)}</span>`:esc(a.name);
+    const orchBadge=a.orchestrator?` <span class="ml-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-100 text-indigo-700 align-middle">🧭 Orchestrator</span>`:"";
+    if(a.orchestrator) tr.className+=" bg-indigo-50";
     tr.innerHTML=
-      `<td class="px-3 py-1.5 font-medium text-slate-700 whitespace-nowrap">${nameCell}</td>`+
+      `<td class="px-3 py-1.5 font-medium text-slate-700 whitespace-nowrap">${nameCell}${orchBadge}</td>`+
       `<td class="px-3 py-1.5 whitespace-nowrap"><span class="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${tcls}">${esc(a.label)}</span></td>`+
       `<td class="px-3 py-1.5">${sid}</td>`+
       `<td class="px-3 py-1.5 text-slate-500 text-xs whitespace-nowrap">${a.age!=null?"ago "+fmtDuration(a.age):"–"}</td>`+
@@ -268,7 +270,14 @@ def _agents_state(cfg: dict) -> list[dict]:
             a["vendor"] = ov["vendor"]
         if ov.get("restart"):
             a["resume_cmd"] = ov["restart"]
-    return detect.pinned_agents(cfg.get("pinned_daemons", [])) + tmux
+    agents = detect.pinned_agents(cfg.get("pinned_daemons", [])) + tmux
+    orch = cfg.get("orchestrator")
+    if orch:
+        for a in agents:
+            if a["name"] == orch:
+                a["orchestrator"] = True
+        agents.sort(key=lambda a: not a.get("orchestrator"))   # orchestrator first (stable)
+    return agents
 
 
 def _state() -> bytes:

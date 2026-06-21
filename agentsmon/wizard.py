@@ -110,6 +110,21 @@ def run() -> int:
 
     cfg["agents"] = agents
     cfg["daemons"] = daemons
+
+    # Orchestrator — the main agent; shown first and highlighted on the dashboard.
+    choices = [a["name"] for a in agents] + [d["name"] for d in daemons]
+    if choices:
+        print("\nWhich one is your orchestrator (the main agent)? It's highlighted first.")
+        for i, n in enumerate(choices, 1):
+            print(f"  {i}) {n}")
+        print("  0) none")
+        pick = _ask("Pick a number", "1")
+        try:
+            idx = int(pick)
+            cfg["orchestrator"] = choices[idx - 1] if 1 <= idx <= len(choices) else ""
+        except ValueError:
+            cfg["orchestrator"] = ""
+
     path = config.save(cfg)
     print(f"\n✓ Saved config to {path}")
     print(f"  Supervising {len(agents)} agent(s), watching {len(daemons)} daemon(s).")

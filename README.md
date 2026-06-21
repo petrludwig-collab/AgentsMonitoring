@@ -122,6 +122,8 @@ hash (`dashboard.auth.pwhash`), never in plaintext. Remove the `auth` block to t
   table (e.g. a gateway, a worker): each has `name`, `process` (pgrep), `tag` (model/label shown),
   `vendor` (tag colour: anthropic/openai/google) and optional `name_color` (highlight the name:
   red/gold/green/blue).
+- **orchestrator** — the name of your main agent/daemon (chosen in `setup`). It's shown
+  **first** in the Persistent Agents table with a 🧭 Orchestrator highlight.
 - **agents[].tag / agents[].vendor** — override the model label and tag colour shown for a
   detected agent (otherwise the detected type + maker colour are used).
 - **probe.min_outage_samples** — how many consecutive failed probes count as a real outage for
