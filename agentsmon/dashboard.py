@@ -167,8 +167,9 @@ function renderAgents(root, agents){
   tb.innerHTML="";
   agents.forEach(a=>{
     const tcls=VENDOR[a.vendor]||"bg-slate-100 text-slate-600";
-    const sid=a.session_id?`<span class="font-mono text-xs text-slate-600 whitespace-nowrap">${esc(a.session_id)}</span>`
-      :`<span class="text-xs text-slate-300">— none</span>`;
+    const tip=a.resume_cmd?`↻ ${a.resume_cmd}`:(a.session_id||"no resume");
+    const sid=a.session_id?`<span class="font-mono text-xs text-slate-600 whitespace-nowrap cursor-help" title="${esc(tip)}">${esc(a.session_id)}</span>`
+      :`<span class="text-xs text-slate-300 cursor-help" title="${esc(tip)}">— none</span>`;
     const ok=a.alive; const stDot=ok?"bg-emerald-500":"bg-slate-300"; const stTxt=ok?"Running":"Idle";
     const stCls=ok?"text-slate-600":"text-slate-400";
     const tr=document.createElement("tr"); tr.className="border-b border-slate-100 last:border-0";
@@ -237,6 +238,8 @@ def _agents_state(cfg: dict) -> list[dict]:
             a["label"] = ov["tag"]
         if ov.get("vendor"):
             a["vendor"] = ov["vendor"]
+        if ov.get("restart"):
+            a["resume_cmd"] = ov["restart"]
     return detect.pinned_agents(cfg.get("pinned_daemons", [])) + tmux
 
 

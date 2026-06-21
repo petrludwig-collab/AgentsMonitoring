@@ -32,6 +32,13 @@ KNOWN_AGENTS = [
 KIND_VENDOR = {"claude-code": "anthropic", "codex": "openai", "gemini": "google",
                "antigravity": "google", "aider": "other"}
 
+#: How to resume a session per kind ({id} → session id). Shown as a hover tooltip on the id.
+RESUME_TEMPLATES = {
+    "claude-code": "claude --resume {id}",
+    "codex": "codex resume {id}",
+    "antigravity": "agy --conversation {id}",
+}
+
 #: Login shells — a tmux session running only these has no agent (it's idle).
 SHELLS = {"bash", "-bash", "zsh", "-zsh", "sh", "-sh", "fish", "-fish", "tmux"}
 
@@ -169,10 +176,11 @@ def discover_agents(extra_matches: list[tuple] | None = None, now: float | None 
         ranked = sorted(cmds, key=lambda c: c.split()[0].rsplit("/", 1)[-1] in SHELLS)
         kind, label, sid = _classify(ranked, extra_matches)
         age = int(now - s["created"]) if s["created"] else None
+        resume = RESUME_TEMPLATES.get(kind, "").format(id=sid) if (sid and kind in RESUME_TEMPLATES) else None
         agents.append({
             "name": s["name"], "kind": kind, "label": label, "session_id": sid,
             "vendor": KIND_VENDOR.get(kind), "alive": kind != "shell", "age": age,
-            "pids": sorted(tree),
+            "resume_cmd": resume, "pids": sorted(tree),
         })
     return agents
 
