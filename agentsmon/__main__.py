@@ -21,6 +21,7 @@ def main(argv=None) -> int:
     p.add_argument("-V", "--version", action="version", version=f"agentsmon {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("setup", help="interactive setup wizard")
+    sub.add_parser("add", help="detect and add newly-running agents/daemons (no full re-setup)")
     sub.add_parser("status", help="print live status")
     ka = sub.add_parser("keepalive", help="restart anything that died")
     ka.add_argument("--loop", action="store_true", help="run continuously")
@@ -48,6 +49,9 @@ def main(argv=None) -> int:
     if args.command == "setup":
         from . import wizard
         return wizard.run()
+    if args.command == "add":
+        from . import wizard
+        return wizard.add()
     if args.command == "service":
         from . import service
         return service.main()

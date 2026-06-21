@@ -53,6 +53,7 @@ restart command for each), optionally watches detected daemons, and installs the
 ## Commands
 
 ```bash
+agentsmon add               # detect & add newly-started agents/daemons (no full re-setup)
 agentsmon status            # live agent + daemon status in the terminal
 agentsmon dashboard         # serve the status web page (default http://127.0.0.1:8765)
 agentsmon keepalive         # one supervision pass (restart anything dead)

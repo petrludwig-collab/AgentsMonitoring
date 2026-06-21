@@ -139,21 +139,101 @@ def _ask_secret(prompt: str) -> str:
         return _ask(prompt)
 
 
+def _agent_entry(a: dict) -> dict:
+    return {"name": a["name"], "label": a["label"],
+            "match": MATCH_KEYWORD.get(a["kind"], a["kind"]),
+            "restart": _auto_restart(a),
+            "cwd": detect._session_cwd(a["name"]) or str(Path.home()),
+            "enabled": True}
+
+
+def _daemon_entries(d: dict) -> tuple:
+    """(keepalive daemon, pinned Persistent-Agents row, availability service) for a daemon."""
+    daemon = dict(d)
+    pinned = {"name": d["name"], "process": d["pattern"]}
+    service = {"name": d["name"], "process": d["pattern"]}
+    if d.get("health_url"):
+        pinned["health_url"] = d["health_url"]
+        service["health_url"] = d["health_url"]
+    if d.get("name_color"):
+        pinned["name_color"] = d["name_color"]
+    model = detect.daemon_model(d["name"])
+    if model:
+        pinned["tag"] = model
+        v = detect.vendor_for_model(model)
+        if v:
+            pinned["vendor"] = v
+    return daemon, pinned, service
+
+
+def _scan_candidates(known: set) -> list:
+    """tmux agents (running) + known daemons (running or installed), excluding names in *known*."""
+    out = []
+    for a in (x for x in detect.discover_agents() if x["alive"]):
+        if a["name"] not in known:
+            out.append({"kind": "agent", "obj": a, "display": f"{a['name']}  →  {a['label']}"})
+    for d in COMMON_DAEMONS:
+        running = _running(d["pattern"])
+        if (running or shutil.which(d.get("binary", ""))) and d["name"] not in known:
+            out.append({"kind": "daemon", "obj": d,
+                        "display": f"{d['name']}  (daemon{'' if running else ', not running'})"})
+    return out
+
+
+def add() -> int:
+    """`agentsmon add` — detect agents/daemons not yet monitored and add them, no full re-setup."""
+    if not config.DEFAULT_PATH.exists():
+        print("No config yet — run 'agentsmon setup' first.")
+        return 1
+    cfg = config.load()
+    known = set()
+    for key in ("agents", "daemons", "services", "pinned_daemons"):
+        known |= {x.get("name") for x in cfg.get(key, []) if x.get("name")}
+    candidates = _scan_candidates(known)
+    tb = _telegram_bridge_service()
+    if tb and tb["name"] not in known:
+        candidates.append({"kind": "bridge", "obj": tb, "display": "Telegram Bridge Status"})
+    if not candidates:
+        print("Nothing new — everything detected is already monitored. ✓")
+        return 0
+    print("New (not yet monitored). Select which to add:\n")
+    for i, c in enumerate(candidates, 1):
+        print(f"  [{i}] {c['display']}")
+    chosen = _parse_selection(_ask("\nNumbers, 'all', or 'none'", "all"), len(candidates))
+    added = 0
+    for i, c in enumerate(candidates, 1):
+        if i not in chosen:
+            continue
+        if c["kind"] == "agent":
+            cfg.setdefault("agents", []).append(_agent_entry(c["obj"]))
+        elif c["kind"] == "daemon":
+            dmn, pin, svc = _daemon_entries(c["obj"])
+            cfg.setdefault("daemons", []).append(dmn)
+            cfg.setdefault("pinned_daemons", []).append(pin)
+            cfg.setdefault("services", []).append(svc)
+        elif c["kind"] == "bridge":
+            cfg.setdefault("services", []).append(c["obj"])
+            r = _bridge_restart_cmd()
+            if r:
+                cfg.setdefault("daemons", []).append({"name": "Telegram Bridge",
+                                                      "pattern": "agent2telegram run", "restart": r})
+        added += 1
+    if not added:
+        print("Nothing selected.")
+        return 0
+    config.save(cfg)
+    print(f"\n✓ Added {added}. Reloading the boot service + dashboard…")
+    service.install()
+    print("Done — check:  agentsmon status")
+    return 0
+
+
 def run() -> int:
     print("=== Agents Monitoring setup ===\n")
     if not shutil.which("tmux"):
         print("⚠️  tmux not found — agents run inside tmux, so install tmux first.")
     print("Scanning for agents and daemons…\n")
-    # tmux agents (running) + known daemons (running, or installed but currently down).
-    candidates = []
-    for a in (x for x in detect.discover_agents() if x["alive"]):
-        candidates.append({"kind": "agent", "obj": a,
-                           "display": f"{a['name']}  →  {a['label']}"})
-    for d in COMMON_DAEMONS:
-        running = _running(d["pattern"])
-        if running or shutil.which(d.get("binary", "")):
-            candidates.append({"kind": "daemon", "obj": d,
-                               "display": f"{d['name']}  (daemon{'' if running else ', not running'})"})
+    candidates = _scan_candidates(set())   # everything (fresh setup)
 
     chosen: set = set()
     if not candidates:
@@ -172,14 +252,9 @@ def run() -> int:
         if i not in chosen:
             continue
         if c["kind"] == "agent":
-            a = c["obj"]
-            restart = _auto_restart(a)
-            cwd = detect._session_cwd(a["name"]) or str(Path.home())
-            agents.append({"name": a["name"], "label": a["label"],
-                           "match": MATCH_KEYWORD.get(a["kind"], a["kind"]),
-                           "restart": restart, "cwd": cwd, "enabled": True})
+            agents.append(_agent_entry(c["obj"]))
         else:
-            daemons.append(dict(c["obj"]))
+            daemons.append(c["obj"])
     print(f"\n  → will monitor {len(agents)} agent(s) + {len(daemons)} daemon(s), with auto-restart.")
 
     # Dashboard reach: localhost always works; ask whether to also expose it on the machine's IP.
@@ -205,29 +280,16 @@ def run() -> int:
     else:
         cfg["dashboard"].pop("auth", None)
 
-    cfg["agents"] = agents
-    cfg["daemons"] = daemons
     # Build the full dashboard by default (the layout we run ourselves): each selected daemon
-    # becomes both a row at the top of Persistent Agents AND its own availability card with
-    # uptime/SLA/latency. tmux agents already carry their maker colour automatically.
-    cfg["pinned_daemons"] = []
+    # becomes a keepalive target, a row at the top of Persistent Agents, AND its own availability
+    # card. tmux agents already carry their maker colour automatically.
+    cfg["agents"] = agents
+    cfg["daemons"], cfg["pinned_daemons"], cfg["services"] = [], [], []
     for d in daemons:
-        entry = {"name": d["name"], "process": d["pattern"]}
-        if d.get("health_url"):
-            entry["health_url"] = d["health_url"]
-        if d.get("name_color"):
-            entry["name_color"] = d["name_color"]   # OpenClaw red, Hermes gold (default)
-        model = detect.daemon_model(d["name"])
-        if model:
-            entry["tag"] = model                     # show the concrete model
-            v = detect.vendor_for_model(model)
-            if v:
-                entry["vendor"] = v
-        cfg["pinned_daemons"].append(entry)
-    cfg["services"] = [
-        {"name": d["name"], "process": d["pattern"],
-         **({"health_url": d["health_url"]} if d.get("health_url") else {})}
-        for d in daemons]
+        dmn, pin, svc = _daemon_entries(d)
+        cfg["daemons"].append(dmn)
+        cfg["pinned_daemons"].append(pin)
+        cfg["services"].append(svc)
     # Auto-add a Telegram Bridge availability card if an Agent2Telegram bridge is running,
     # AND keep it alive (restart from its current command line, so it returns after a reboot).
     tb = _telegram_bridge_service()
