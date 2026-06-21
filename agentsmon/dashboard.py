@@ -159,7 +159,7 @@ function renderService(root, s){
   }else{
     q(root,".m-x-label").textContent="Latency";
     q(root,".m-x").textContent=s.latency_ms!=null?s.latency_ms+" ms":"–";
-    q(root,".m-x-sub").textContent="health check";
+    q(root,".m-x-sub").textContent=s.metric_sub||"health check";
   }
   renderTimeline(root, s.timeline, s.timeline_days);
 }
@@ -247,6 +247,7 @@ def _service_state(cfg: dict, running_agents: int = 0) -> list[dict]:
             "last_ts": cur["ts"] if cur else None,
             "latency_ms": round(lat * 1000) if lat is not None else None,
             "metric": metric, "metric_value": running_agents if metric == "agents" else None,
+            "metric_sub": s.get("latency_label", "health check"),
             "uptime_seconds": db.uptime_seconds(name, min_outage),
             "sla": sla_pct, "sla_window_days": win_days, "sla_samples": samples,
             "timeline": db.timeline(name, tdays * 86400, tdays), "timeline_days": tdays,
