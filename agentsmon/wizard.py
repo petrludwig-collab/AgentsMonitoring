@@ -330,7 +330,8 @@ def new() -> int:
     config.save(cfg)
     print(f"\n✓ Created '{name}' ({chosen['label']}), launched in tmux, and added to monitoring.")
     service.install()
-    print(f"\nAttach to interact (or finish login):  tmux attach -t {name}")
+    import shlex
+    print(f"\nAttach to interact (or finish login):  tmux attach -t {shlex.quote(name)}")
     print("It now shows on the dashboard and is kept alive automatically.")
     return 0
 
