@@ -172,6 +172,17 @@ def run() -> int:
 
     cfg["agents"] = agents
     cfg["daemons"] = daemons
+    # Build the full dashboard by default (the layout we run ourselves): each selected daemon
+    # becomes both a row at the top of Persistent Agents AND its own availability card with
+    # uptime/SLA/latency. tmux agents already carry their maker colour automatically.
+    cfg["pinned_daemons"] = [
+        {"name": d["name"], "process": d["pattern"],
+         **({"health_url": d["health_url"]} if d.get("health_url") else {})}
+        for d in daemons]
+    cfg["services"] = [
+        {"name": d["name"], "process": d["pattern"],
+         **({"health_url": d["health_url"]} if d.get("health_url") else {})}
+        for d in daemons]
     path = config.save(cfg)
     print(f"\n✓ Saved config to {path}")
     print(f"  Supervising {len(agents)} agent(s), watching {len(daemons)} daemon(s).")
