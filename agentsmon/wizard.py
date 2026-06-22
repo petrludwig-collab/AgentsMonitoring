@@ -102,7 +102,10 @@ def _bridge_restart_cmd() -> str | None:
         except (OSError, ValueError):
             pass
         log = "$HOME/.local/state/agentsmon/bridge.log"
-        return f"nohup {env_prefix}{cmd} >> {log} 2>&1 &"
+        # Set env via `env` AFTER nohup. `nohup PYTHONPATH=... cmd` is broken — nohup would treat
+        # the VAR=val as the command name and fail; `nohup env VAR=val cmd` is correct.
+        prefix = f"env {env_prefix}" if env_prefix else ""
+        return f"nohup {prefix}{cmd} >> {log} 2>&1 &"
     return None
 
 
