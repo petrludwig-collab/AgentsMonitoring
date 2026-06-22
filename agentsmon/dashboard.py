@@ -186,7 +186,7 @@ function renderAgents(root, agents){
   agents.forEach(a=>{
     const tcls=VENDOR[a.vendor]||"bg-slate-100 text-slate-600";
     const copy=a.resume_cmd||a.session_id||"";
-    const tip=a.resume_cmd?`↻ ${a.resume_cmd} — click to copy`:(a.session_id||"no resume");
+    const tip=copy?`${copy} (click to copy)`:"no resume";
     const sid=a.session_id?`<span class="sid font-mono text-xs text-slate-600 whitespace-nowrap cursor-pointer hover:text-sky-600" title="${esc(tip)}" data-copy="${esc(copy)}">${esc(a.session_id)}</span>`
       :`<span class="text-xs text-slate-300 cursor-help" title="${esc(tip)}">— none</span>`;
     const ok=a.alive; const dot=ok?"bg-emerald-500":"bg-slate-300";
