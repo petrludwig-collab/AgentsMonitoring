@@ -11,6 +11,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import agentsmon
@@ -79,6 +80,18 @@ def install() -> int:
     # "agentsmon setup/service", not "agentsmon dashboard".)
     if shutil.which("pkill"):
         subprocess.run(["pkill", "-f", "agentsmon dashboard"], capture_output=True)
+        # WAIT until the old dashboard is actually gone (and its port freed) before relaunching.
+        # Otherwise the launcher's pgrep guard still sees the dying process (so it skips starting a
+        # fresh one), or the new one hits "address already in use" and exits — either way the STALE
+        # pre-config dashboard keeps serving and changes like HTTP auth never take effect.
+        for i in range(25):
+            gone = subprocess.run(["pgrep", "-f", "agentsmon dashboard"],
+                                  capture_output=True).returncode != 0
+            if gone:
+                break
+            if i == 15:                       # stubborn → escalate to SIGKILL
+                subprocess.run(["pkill", "-9", "-f", "agentsmon dashboard"], capture_output=True)
+            time.sleep(0.3)
     # Kick it once now so the dashboard comes up immediately on the configured host.
     subprocess.run(["sh", str(launcher)], capture_output=True)
     print("  ✓ installed cron launcher (@reboot + every minute) — survives logout/reboot.")
