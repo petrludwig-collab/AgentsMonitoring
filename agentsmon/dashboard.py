@@ -46,8 +46,8 @@ PAGE = r"""<!DOCTYPE html><html lang="en"><head>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>.bar{transition:opacity .15s ease}.bar:hover{opacity:.65}.copied-flash{color:#059669!important;transition:color .1s}#toast{transition:opacity .2s ease}</style>
 </head><body class="bg-slate-50 text-slate-800 antialiased">
-<div id="toast" class="fixed left-1/2 bottom-5 -translate-x-1/2 bg-slate-800 text-white text-sm px-3 py-1.5 rounded-md shadow-lg opacity-0 pointer-events-none" style="z-index:50">&nbsp;</div>
-<div class="max-w-6xl mx-auto px-5 py-6">
+<div id="toast" class="fixed left-1/2 bottom-5 -translate-x-1/2 bg-slate-800 text-white text-sm px-2 py-1.5 rounded-md shadow-lg opacity-0 pointer-events-none" style="z-index:50">&nbsp;</div>
+<div class="mx-auto px-5 py-6" style="max-width:850px">
 
   <section class="mb-6" data-svc="agents">
     <div class="svc-head flex items-center gap-2.5 mb-3 rounded-lg border px-3 py-2 bg-white border-slate-200">
@@ -58,12 +58,12 @@ PAGE = r"""<!DOCTYPE html><html lang="en"><head>
     <div class="rounded-lg border border-slate-200 bg-white overflow-x-auto">
       <table class="w-full text-sm"><thead>
         <tr class="text-[11px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
-          <th class="text-left font-medium px-3 py-2">Agent</th>
-          <th class="text-left font-medium px-3 py-2">Model</th>
-          <th class="text-left font-medium px-3 py-2">Session ID / Port</th>
-          <th class="text-left font-medium px-3 py-2">Started</th>
-          <th class="text-left font-medium px-3 py-2">Status</th>
-          <th class="text-right font-medium px-3 py-2"></th>
+          <th class="text-left font-medium px-2 py-2">Agent</th>
+          <th class="text-left font-medium px-2 py-2">Model</th>
+          <th class="text-left font-medium px-2 py-2">Session ID / Port</th>
+          <th class="text-left font-medium px-2 py-2">Started</th>
+          <th class="text-left font-medium px-2 py-2">Status</th>
+          <th class="text-right font-medium px-2 py-2"></th>
         </tr></thead>
         <tbody id="agents-rows"><tr><td colspan="6" class="px-3 py-3 text-slate-400">loading…</td></tr></tbody>
       </table>
@@ -217,13 +217,13 @@ function renderAgents(root, agents){
     // Telegram deep-link icon for agents bridged to a bot (opens t.me/<bot> in a new tab).
     const tg=a.telegram_url?` <a href="${esc(a.telegram_url)}" target="_blank" rel="noopener" title="Open @${esc(a.telegram_bot)} in Telegram" class="inline-flex align-middle ml-1 hover:opacity-70"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="#229ED9"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.27 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg></a>`:"";
     tr.innerHTML=
-      `<td class="px-3 py-1.5 font-medium text-slate-700 whitespace-nowrap">${nameCell}${tg}</td>`+
-      `<td class="px-3 py-1.5 whitespace-nowrap"><span class="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${tcls}">${esc(a.label)}</span></td>`+
-      `<td class="px-3 py-1.5">${sid}</td>`+
-      `<td class="px-3 py-1.5 text-slate-500 text-xs whitespace-nowrap">${a.age!=null?"ago "+fmtDuration(a.age):"–"}</td>`+
-      `<td class="px-3 py-1.5"><span class="inline-flex items-center gap-1.5 whitespace-nowrap ${stCls}"><span class="h-2 w-2 rounded-full ${dot} shrink-0"></span>${statusTxt}</span></td>`+
+      `<td class="px-2 py-1.5 font-medium text-slate-700 whitespace-nowrap">${nameCell}${tg}</td>`+
+      `<td class="px-2 py-1.5 whitespace-nowrap"><span class="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${tcls}">${esc(a.label)}</span></td>`+
+      `<td class="px-2 py-1.5">${sid}</td>`+
+      `<td class="px-2 py-1.5 text-slate-500 text-xs whitespace-nowrap">${a.age!=null?"ago "+fmtDuration(a.age):"–"}</td>`+
+      `<td class="px-2 py-1.5"><span class="inline-flex items-center gap-1.5 whitespace-nowrap ${stCls}"><span class="h-2 w-2 rounded-full ${dot} shrink-0"></span>${statusTxt}</span></td>`+
       // Per-row actions: ↻ restart, ✕ stop. Small icons at the very end of the row.
-      `<td class="px-3 py-1.5 text-right whitespace-nowrap">`+
+      `<td class="px-2 py-1.5 text-right whitespace-nowrap">`+
         `<button class="agent-act inline-flex align-middle p-1 rounded text-slate-400 hover:text-sky-600 hover:bg-slate-100" data-act="restart" data-name="${esc(a.name)}" title="Restart ${esc(a.name)}">`+
           `<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg></button>`+
         `<button class="agent-act inline-flex align-middle p-1 ml-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50" data-act="stop" data-name="${esc(a.name)}" title="Stop ${esc(a.name)}">`+
