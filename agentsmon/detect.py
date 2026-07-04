@@ -270,6 +270,19 @@ def _claude_model_from_transcript(path: str) -> str | None:
     return None
 
 
+def _claude_model_from_cmds(cmds: list[str]) -> str | None:
+    """Prefer the live CLI ``--model`` argument when present.
+
+    Several Claude Code agents can share the same cwd. Transcript lookup by cwd is then ambiguous,
+    while the running process argv is authoritative for freshly launched named agents.
+    """
+    for cmd in cmds:
+        m = re.search(r"(?:^|\s)--model(?:=|\s+)([^\s]+)", cmd)
+        if m and m.group(1).startswith("claude-"):
+            return _pretty_claude_model(m.group(1))
+    return None
+
+
 def _claude_info_for_cwd(cwd: str) -> tuple[str | None, str | None]:
     """A freshly launched `claude` has no ``--resume`` id on argv, so resolve its session UUID
     (and concrete model) from ~/.claude/projects/ — the newest transcript whose ``cwd`` matches."""
@@ -474,11 +487,13 @@ def discover_agents(extra_matches: list[tuple] | None = None, now: float | None 
         # the concrete model by cwd, so both show up (just like Codex does).
         if kind == "claude-code":
             cwd = _session_cwd(s["name"])
+            cmd_model = _claude_model_from_cmds(ranked)
             csid, cmodel = _claude_info_for_cwd(cwd) if cwd else (None, None)
             if sid is None:
                 sid = csid
-            if cmodel:
-                label = cmodel
+            model = cmd_model or cmodel
+            if model:
+                label = model
         elif kind == "antigravity":
             cwd = _session_cwd(s["name"])
             asid, amodel = _antigravity_info_for_cwd(cwd) if cwd else (None, None)
