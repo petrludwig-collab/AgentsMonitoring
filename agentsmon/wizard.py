@@ -270,12 +270,8 @@ def _daemon_entries(d: dict) -> tuple:
     tg = d.get("telegram") or detect.daemon_telegram_bot(d.get("name", ""))
     if tg:
         pinned["telegram"] = tg
-    model = detect.daemon_model(d["name"])
-    if model:
-        pinned["tag"] = model
-        v = detect.vendor_for_model(model)
-        if v:
-            pinned["vendor"] = v
+    # Do not persist the auto-detected model: pinned_agents() resolves it live on every refresh,
+    # so changing the daemon's own config is reflected without rerunning setup.
     return daemon, pinned
 
 

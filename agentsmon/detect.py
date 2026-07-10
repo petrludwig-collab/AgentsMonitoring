@@ -386,6 +386,31 @@ def _codex_model() -> str | None:
     return _pretty_model(m.group(1)) if m else None
 
 
+def _hermes_model() -> str | None:
+    """Best-effort live Hermes model from ``~/.hermes/config.yaml``.
+
+    Agentsmon deliberately has no YAML dependency, so parse only the top-level ``model`` block
+    and its scalar ``default`` value. This avoids incorrectly borrowing Codex CLI's independent
+    model selection from ``~/.codex/config.toml``.
+    """
+    try:
+        lines = (Path.home() / ".hermes" / "config.yaml").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    in_model = False
+    for line in lines:
+        if re.match(r"^model\s*:\s*$", line):
+            in_model = True
+            continue
+        if in_model and line and not line[0].isspace():
+            break
+        if in_model:
+            m = re.match(r"^\s+default\s*:\s*[\"']?([^\s\"'#]+)", line)
+            if m:
+                return _pretty_model(m.group(1))
+    return None
+
+
 def _openclaw_model() -> str | None:
     """OpenClaw's model from openclaw.json. The key may be a string ('model': 'openai/gpt-5.5')
     or an object ('model': {'primary': 'openai/gpt-5.5'}) — parse JSON and handle both, with a
@@ -427,8 +452,7 @@ def daemon_model(name: str) -> str | None:
     if "openclaw" in n:
         return _openclaw_model()
     if "hermes" in n:
-        # Hermes here runs on the openai-codex provider → same model as Codex.
-        return _codex_model() or _codex_model_any()
+        return _hermes_model() or _codex_model() or _codex_model_any()
     return None
 
 
