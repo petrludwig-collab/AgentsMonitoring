@@ -13,6 +13,7 @@ import glob
 import json
 import os
 import re
+import shlex
 import shutil
 import sqlite3
 import subprocess
@@ -248,6 +249,8 @@ def _pretty_claude_model(raw: str) -> str:
     """``claude-opus-4-8`` → ``Opus 4.8`` (family + version); unknown ids returned as-is."""
     m = re.match(r"claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d+))?", raw or "")
     if not m:
+        if raw in {"opus", "sonnet", "haiku", "fable"}:
+            return raw.capitalize()
         return raw
     ver = m.group(2) + (f".{m.group(3)}" if m.group(3) else "")
     return f"{m.group(1).capitalize()} {ver}"
@@ -268,6 +271,32 @@ def _claude_model_from_transcript(path: str) -> str | None:
         if m and m != "<synthetic>":
             return _pretty_claude_model(m)
     return None
+
+
+def _claude_model_from_cmds(cmds: list[str]) -> str | None:
+    """Prefer the live CLI ``--model`` argument when present.
+
+    Several Claude Code agents can share the same cwd. Transcript lookup by cwd is then ambiguous,
+    while the running process argv is authoritative for freshly launched named agents.
+    """
+    for cmd in cmds:
+        try:
+            parts = shlex.split(cmd)
+        except ValueError:
+            parts = cmd.split()
+        if not parts or os.path.basename(parts[0]) != "claude":
+            continue
+        for i, part in enumerate(parts):
+            if part == "--model" and i + 1 < len(parts):
+                return _pretty_claude_model(parts[i + 1])
+            if part.startswith("--model="):
+                return _pretty_claude_model(part.split("=", 1)[1])
+    return None
+
+
+def _choose_claude_model(cmd_model: str | None, transcript_model: str | None) -> str | None:
+    """Prefer argv: transcript lookup by cwd is ambiguous when several sessions share one cwd."""
+    return cmd_model or transcript_model
 
 
 def _claude_info_for_cwd(cwd: str) -> tuple[str | None, str | None]:
@@ -474,11 +503,13 @@ def discover_agents(extra_matches: list[tuple] | None = None, now: float | None 
         # the concrete model by cwd, so both show up (just like Codex does).
         if kind == "claude-code":
             cwd = _session_cwd(s["name"])
+            cmd_model = _claude_model_from_cmds(ranked)
             csid, cmodel = _claude_info_for_cwd(cwd) if cwd else (None, None)
             if sid is None:
                 sid = csid
-            if cmodel:
-                label = cmodel
+            model = _choose_claude_model(cmd_model, cmodel)
+            if model:
+                label = model
         elif kind == "antigravity":
             cwd = _session_cwd(s["name"])
             asid, amodel = _antigravity_info_for_cwd(cwd) if cwd else (None, None)
