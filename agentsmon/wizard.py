@@ -72,11 +72,14 @@ COMMON_DAEMONS = [
     {"name": "OpenClaw", "pattern": "openclaw", "binary": "openclaw", "name_color": "red",
      "health_url": "http://127.0.0.1:18789/health",
      "restart": "nohup openclaw gateway > ~/openclaw.log 2>&1 &"},
-    # Liveness comes from the health_url below, NOT this pattern (process names differ across
-    # installs). The pattern is best-effort, only for the uptime column: 'hermes gateway' matches
-    # the real `…/bin/hermes gateway run` and avoids the OpenClaw node gateway launched from a
-    # .hermes/node path (whose command line is `…/index.js gateway`, no "hermes gateway").
-    {"name": "Hermes", "pattern": "hermes gateway", "binary": "hermes", "name_color": "gold",
+    # Liveness = health_url OR process match (either signal counts, see detect.daemon_status),
+    # so a health-endpoint change in a new Hermes version can't blind us while the process runs.
+    # The pattern must match BOTH Hermes launch forms: the old `…/bin/hermes gateway run` AND the
+    # current venv/pip form `…python -m hermes_cli.main gateway run`. A bare "hermes gateway"
+    # matches only the old form (the new one has `hermes_cli.main gateway`, no "hermes gateway"),
+    # so we alternate. Neither form matches the OpenClaw node gateway (`…/index.js gateway`).
+    {"name": "Hermes", "pattern": r"hermes gateway run|hermes_cli\.main gateway",
+     "binary": "hermes", "name_color": "gold",
      "health_url": "http://127.0.0.1:8642/health",
      "restart": "nohup hermes gateway run --replace > ~/hermes.log 2>&1 &"},
 ]

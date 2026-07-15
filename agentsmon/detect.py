@@ -622,7 +622,11 @@ def daemon_status(daemons: list[dict]) -> list[dict]:
         url = d.get("health_url")
         if url:
             entry["http_ok"] = _http_ok(url)
-            entry["up"] = entry["http_ok"]      # health endpoint is the source of truth
+            # Up if EITHER signal is positive. Health endpoint is primary, but the process match
+            # is a valid fallback: a new daemon version can move/rename its /health endpoint while
+            # the process keeps running fine (e.g. Hermes still answering on Telegram). Requiring
+            # http alone then falsely marks a live daemon "down" and triggers a needless restart.
+            entry["up"] = entry["http_ok"] or proc_up
         else:
             entry["up"] = proc_up
         out.append(entry)
