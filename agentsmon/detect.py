@@ -9,6 +9,7 @@ Pure standard library: `tmux` + `ps` via subprocess, no third-party deps.
 """
 from __future__ import annotations
 
+import contextlib
 import glob
 import json
 import os
@@ -319,12 +320,11 @@ def _antigravity_model_from_db(sid: str | None) -> str | None:
     if not db.exists():
         return None
     try:
-        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-        ids: list[str] = []
-        for (v,) in con.execute("SELECT data FROM gen_metadata ORDER BY idx DESC LIMIT 5"):
-            s = v.decode("utf-8", "ignore") if isinstance(v, (bytes, bytearray)) else str(v)
-            ids += re.findall(r"gemini-[a-z0-9.\-]+|claude-[a-z]+-[0-9-]+", s)
-        con.close()
+        with contextlib.closing(sqlite3.connect(f"file:{db}?mode=ro", uri=True)) as con:
+            ids: list[str] = []
+            for (v,) in con.execute("SELECT data FROM gen_metadata ORDER BY idx DESC LIMIT 5"):
+                s = v.decode("utf-8", "ignore") if isinstance(v, (bytes, bytearray)) else str(v)
+                ids += re.findall(r"gemini-[a-z0-9.\-]+|claude-[a-z]+-[0-9-]+", s)
     except sqlite3.Error:
         return None
     if not ids:
