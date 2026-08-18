@@ -9,6 +9,7 @@ Pure standard library: `tmux` + `ps` via subprocess, no third-party deps.
 """
 from __future__ import annotations
 
+import contextlib
 import glob
 import json
 import os
@@ -319,12 +320,11 @@ def _antigravity_model_from_db(sid: str | None) -> str | None:
     if not db.exists():
         return None
     try:
-        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-        ids: list[str] = []
-        for (v,) in con.execute("SELECT data FROM gen_metadata ORDER BY idx DESC LIMIT 5"):
-            s = v.decode("utf-8", "ignore") if isinstance(v, (bytes, bytearray)) else str(v)
-            ids += re.findall(r"gemini-[a-z0-9.\-]+|claude-[a-z]+-[0-9-]+", s)
-        con.close()
+        with contextlib.closing(sqlite3.connect(f"file:{db}?mode=ro", uri=True)) as con:
+            ids: list[str] = []
+            for (v,) in con.execute("SELECT data FROM gen_metadata ORDER BY idx DESC LIMIT 5"):
+                s = v.decode("utf-8", "ignore") if isinstance(v, (bytes, bytearray)) else str(v)
+                ids += re.findall(r"gemini-[a-z0-9.\-]+|claude-[a-z]+-[0-9-]+", s)
     except sqlite3.Error:
         return None
     if not ids:
@@ -421,14 +421,40 @@ def _openclaw_model() -> str | None:
     return _pretty_model(found[0]) if found else None
 
 
+def _hermes_model() -> str | None:
+    """Hermes' actual active model, from its own config.yaml (``model.default`` /
+    ``model.provider``). Hermes can run on ANY provider (Anthropic, Copilot, Gemini,
+    Codex, ...), so we must read its own config rather than assuming a fixed provider
+    (e.g. previously this hardcoded 'always same as Codex', which went stale the
+    moment the user switched Hermes to a different provider/model)."""
+    for candidate in (
+        Path.home() / ".hermes" / "config.yaml",
+        Path.home() / ".config" / "hermes" / "config.yaml",
+    ):
+        try:
+            txt = candidate.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        # Tiny hand-rolled YAML read (avoid a PyYAML dependency in this stdlib-only
+        # tool): find the `model:` block and pull `default:`/`provider:` from it.
+        block_match = re.search(r"(?m)^model:\s*\n((?:[ \t]+.*\n?)*)", txt)
+        block = block_match.group(1) if block_match else txt
+        model_match = re.search(r'(?m)^\s*default:\s*["\']?([A-Za-z0-9._/-]+)', block)
+        provider_match = re.search(r'(?m)^\s*provider:\s*["\']?([A-Za-z0-9._/-]+)', block)
+        if model_match:
+            model = _pretty_model(model_match.group(1))
+            provider = provider_match.group(1) if provider_match else None
+            return f"{model} ({provider})" if provider else model
+    return None
+
+
 def daemon_model(name: str) -> str | None:
     """Concrete model a known daemon runs (best-effort, for the tag)."""
     n = name.lower()
     if "openclaw" in n:
         return _openclaw_model()
     if "hermes" in n:
-        # Hermes here runs on the openai-codex provider → same model as Codex.
-        return _codex_model() or _codex_model_any()
+        return _hermes_model() or _codex_model() or _codex_model_any()
     return None
 
 

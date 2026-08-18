@@ -7,6 +7,7 @@ concurrent read while the probe thread writes).
 """
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 import time
 
@@ -29,15 +30,27 @@ def _conn() -> sqlite3.Connection:
     return c
 
 
+def _connect():
+    """Context manager that commits/rolls back like ``sqlite3.Connection`` does as a context
+    manager, but ALSO closes the connection afterwards. ``with sqlite3.connect(...) as c:`` only
+    manages the transaction — it never closes the underlying connection/file descriptors, so every
+    call site that did ``with _conn() as c:`` was leaking an open DB handle (and its WAL/SHM
+    siblings) for the lifetime of the process. Long-running processes such as the dashboard's HTTP
+    server eventually hit ``OSError: [Errno 24] Too many open files`` once enough requests came in.
+    """
+    c = _conn()
+    return contextlib.closing(c)
+
+
 def record(service: str, up: bool, latency: float | None = None, detail: str = "",
            ts: int | None = None) -> None:
-    with _conn() as c:
+    with _connect() as c, c:
         c.execute("INSERT INTO probes(ts,service,up,latency,detail) VALUES(?,?,?,?,?)",
                   (int(ts if ts is not None else time.time()), service, 1 if up else 0, latency, detail))
 
 
 def last(service: str) -> dict | None:
-    with _conn() as c:
+    with _connect() as c:
         r = c.execute("SELECT * FROM probes WHERE service=? ORDER BY ts DESC LIMIT 1",
                       (service,)).fetchone()
     return dict(r) if r else None
@@ -46,7 +59,7 @@ def last(service: str) -> dict | None:
 def sla(service: str, window_seconds: int) -> tuple[float | None, int]:
     """(% of samples that were up in the window, sample count)."""
     since = int(time.time()) - window_seconds
-    with _conn() as c:
+    with _connect() as c:
         rows = c.execute("SELECT up, COUNT(*) n FROM probes WHERE service=? AND ts>=? GROUP BY up",
                          (service, since)).fetchall()
     total = sum(r["n"] for r in rows)
@@ -58,7 +71,7 @@ def avg_latency(service: str, window_seconds: int) -> float | None:
     """Average health-check latency (seconds) over the window — the card's 'avg latency' metric
     (distinct from the agent row's current latency)."""
     since = int(time.time()) - window_seconds
-    with _conn() as c:
+    with _connect() as c:
         r = c.execute("SELECT AVG(latency) a FROM probes WHERE service=? AND ts>=? "
                       "AND latency IS NOT NULL", (service, since)).fetchone()
     return r["a"] if r and r["a"] is not None else None
@@ -70,7 +83,7 @@ def uptime_seconds(service: str, min_outage: int = 3) -> int | None:
     do NOT reset uptime — so this reads as "time since the last real restart/outage", matching how
     a status page reports uptime. Returns 0 if currently down, None if there's no data."""
     now = int(time.time())
-    with _conn() as c:
+    with _connect() as c:
         rows = c.execute("SELECT ts, up FROM probes WHERE service=? ORDER BY ts", (service,)).fetchall()
     if not rows:
         return None
@@ -90,7 +103,7 @@ def uptime_seconds(service: str, min_outage: int = 3) -> int | None:
 
 def history_seconds(service: str) -> int:
     """How long we've been recording this service (newest − oldest sample)."""
-    with _conn() as c:
+    with _connect() as c:
         r = c.execute("SELECT MIN(ts) a, MAX(ts) b FROM probes WHERE service=?", (service,)).fetchone()
     return int(r["b"] - r["a"]) if r and r["a"] is not None else 0
 
@@ -102,7 +115,7 @@ def timeline(service: str, window_seconds: int, buckets: int) -> list[dict]:
     start = now - window_seconds
     size = max(1, window_seconds // buckets)
     agg = [[0, 0] for _ in range(buckets)]   # [up_samples, total_samples]
-    with _conn() as c:
+    with _connect() as c:
         rows = c.execute("SELECT ts, up FROM probes WHERE service=? AND ts>=? ORDER BY ts",
                          (service, start)).fetchall()
     for r in rows:
