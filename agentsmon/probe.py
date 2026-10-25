@@ -149,6 +149,10 @@ def _system_health(cfg: dict) -> tuple[bool, float | None, str]:
     checks += list(cfg.get("pinned_daemons", []))
     checks += [s for s in cfg.get("services", []) if s.get("kind") not in ("system", "bridges")]
     for c in checks:
+        # Disabled / legacy-abandoned components are non-applicable — never false-healthy
+        # and never false-outage. Native Hermes LANA health is a separate module card.
+        if c.get("enabled") is False:
+            continue
         name = c.get("name") or c.get("process") or c.get("pattern") or "?"
         if c.get('bridge_config'):
             from . import bridges
@@ -192,7 +196,7 @@ def _system_health(cfg: dict) -> tuple[bool, float | None, str]:
             age = None
         limit = 3 * int(ka.get("interval_seconds", 60)) + 30
         if age is None or age > limit:
-            down.append("keepalive (no pass in %s)" % ("a while" if age is None else f"{int(age)}s"))
+            down.append("keepalive (žádný průchod %s)" % ("délší dobu" if age is None else f"za {int(age)} s"))
 
     uniq: list[str] = []
     for n in down:
@@ -200,7 +204,8 @@ def _system_health(cfg: dict) -> tuple[bool, float | None, str]:
             uniq.append(n)
     up = not uniq
     avg = round(sum(lats.values()) / len(lats), 3) if lats else None
-    detail = "all components up" if up else "down: " + ", ".join(uniq[:5])
+    detail = ("všechny sledované komponenty v pořádku" if up
+              else "výpadek: " + ", ".join(uniq[:5]))
     return up, avg, detail
 
 

@@ -22,6 +22,17 @@ class Hardening(unittest.TestCase):
         dashboard.require_auth_or_die("127.0.0.1", {"dashboard": {}})
         dashboard.require_auth_or_die("100.64.0.10", {"dashboard": {"auth": {"user": "admin", "pwhash": "ab" * 32}}})
 
+    def test_explicit_lan_exception_requires_private_ipv4_and_boolean(self):
+        cfg = {"dashboard": {"allow_unauthenticated_lan": True}}
+        for host in ("192.168.1.153", "10.1.2.3", "172.16.0.1"):
+            dashboard.require_auth_or_die(host, cfg)
+        for host in ("0.0.0.0", "::", "8.8.8.8", "100.64.0.10", "169.254.1.2", "lan.local", "172.32.0.1"):
+            with self.subTest(host=host), self.assertRaises(SystemExit):
+                dashboard.require_auth_or_die(host, cfg)
+        for flag in (False, "true", 1, None):
+            with self.subTest(flag=flag), self.assertRaises(SystemExit):
+                dashboard.require_auth_or_die("192.168.1.153", {"dashboard": {"allow_unauthenticated_lan": flag}})
+
 
 if __name__ == "__main__":
     unittest.main()

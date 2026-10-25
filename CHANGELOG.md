@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.14 (2026-10-25)
+
+- Persistent-agent quota cells are exactly two compact 5h/week gauges with accessible hover/keyboard/touch tooltips; 1920-wide layout uses up to 1480px.
+- Multi-agent system health skips disabled legacy bridges (native Hermes LANA lane remains authoritative) and Czech status copy.
+- ChatGPT/Codex quotas prefer live Hermes `usage --json` over stale rollout JSONL; GitHub Actions collector probes usage + usage/summary with honest permission blockers.
+
+## 0.3.13 (2026-10-25)
+
+- Dashboard UI is Czech (`lang=cs`, `cs-CZ` formatting) with responsive mobile-first layout, compact remaining quota gauges (text + progressbar, not color alone), pauseable auto-refresh, and merged Provider-quotas sections/columns.
+- Plugin cell bars may carry `remaining` / `reset_label` / `state`; unknown remaining stays null (never coerced to 0 % or 100 %).
+
 ## 0.3.12 (2026-10-22)
 
 - The login hint for a Claude agent quotes the session name, so `tmux attach -t "T - Claude"` works when pasted. A test checks every attach hint.

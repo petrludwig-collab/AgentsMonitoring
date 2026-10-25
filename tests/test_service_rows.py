@@ -73,7 +73,10 @@ class RowsRecordedAndShown(unittest.TestCase):
         self.assertIn('class="svc-rows-wrap', dashboard.PAGE)
         self.assertIn("function renderRows(root, rows, details=false)", dashboard.PAGE)
         self.assertIn("renderRows(root, s.rows||[], s.row_details===true)", dashboard.PAGE)
-        self.assertEqual(dashboard.PAGE.count('style="table-layout:fixed;min-width:680px"'), 3, "agents, sandbox, rows")
+        # Responsive layout: tables scroll horizontally instead of a fixed 680px min-width.
+        self.assertGreaterEqual(dashboard.PAGE.count("overflow-x-auto"), 2)
+        self.assertIn("agents-table", dashboard.PAGE)
+        self.assertIn("svc-rows", dashboard.PAGE)
 
 
 if __name__ == "__main__":

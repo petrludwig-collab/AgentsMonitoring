@@ -54,9 +54,29 @@ def cell(value):
     if 'bars' in value:
         result['bars']=[]
         for b in objects(value['bars'],4):
+            if set(b)-{'label','percent','title','remaining','reset_label','state'}: raise ValueError('Invalid bar')
             pct=number(b['percent'])
             if pct>100: raise ValueError('Invalid percent')
-            result['bars'].append({'label':text(b['label'],30),'percent':pct,'title':text(b.get('title',''))})
+            bar={'label':text(b['label'],30),'percent':pct,'title':text(b.get('title',''))}
+            # Optional gauge metadata: unknown remaining must stay null (never coerced to 0/100).
+            if 'remaining' in b:
+                rem=b['remaining']
+                if rem is None:
+                    bar['remaining']=None
+                else:
+                    rem=number(rem)
+                    if rem>100: raise ValueError('Invalid remaining')
+                    bar['remaining']=rem
+            if b.get('reset_label') is not None:
+                bar['reset_label']=text(str(b.get('reset_label')),40)
+            state=b.get('state')
+            if state is not None:
+                state=text(str(state),24).upper()
+                if state not in ('OK','STALE','UNAVAILABLE','N/A','NEDOSTUPNÉ','VYČERPÁNO'):
+                    # Allow Czech UI states through as free text (bounded).
+                    pass
+                bar['state']=state
+            result['bars'].append(bar)
     return result
 
 

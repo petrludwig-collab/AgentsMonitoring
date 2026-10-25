@@ -1,11 +1,11 @@
 {
-  "content_id": "1ae721c3cf99abbb05e6fac67b9a1df5d08e5eca70b7371d7fee893617594180",
+  "content_id": "2f39ddf2fa01df0b565ac150bb30adbcd6659609941aa3360ea443c4529910d1",
   "files": {
-    "__init__.py": "5d34cfa5ece2de941a159c2020100da724d4a43b22abfc822d540620059ab2b3",
+    "__init__.py": "39e4ac1681bd607554cdda2c2c48ee781bf9fedf9da5cbf2c2fec2ae3c0d47cd",
     "__main__.py": "5141a43a820decea25d52515be4f2567b992176a81008b1b6532cedbbe574808",
     "bridges.py": "9525ab9ad7c86f9d0e06ee44c1ee9558ab88331c088a21361fbcc1e86f815540",
     "config.py": "b82b76175ddade997edec84b44b8fe14e50f8f503c5f173447419469fbd421a6",
-    "dashboard.py": "77d5636dd5710808d98fb1117e5ab4f63a974e4151c8be1f02325bfe882b2e02",
+    "dashboard.py": "af1e76ca4ba0dea92fe898d8d64f8962215ae53d56bb338af0630c589464fda2",
     "db.py": "470bafc161d24ac1bea302af0873ebf2e596a8ce77796cb29e79189bb2d1c5cf",
     "detect.py": "ca13453396ca0eab43a3cb067ca7ac5e8af9685f9f56a8ebd9f2b1f221e302e2",
     "dialogs.py": "690cf9a5fb439809329a8054d74de32cca192b67d6e931926762f345812b2b66",
@@ -15,8 +15,8 @@
     "keepalive.py": "f06616f4b43ebf272c707ad319db034aa89ccefdd8db17b2e62f23aa7a22e21d",
     "managed.py": "10da1bd690d61ceb68a571c51aefff1d10b49126026a9b3c13c515ad995ceaeb",
     "plugin_worker.py": "407c3054cfba3429b5f1c7cf28413d12a6b6a12eb0f49de9d23135c2daf4dedb",
-    "plugins.py": "68815d1560a82716caa1b651f5c6d2066ebc6e2a593bedc58d0dc2c80f3f2222",
-    "probe.py": "54b1a6461af4d446270a4cac90e8a4faf262c082ccb6967c77282fb3e6c4158f",
+    "plugins.py": "905732df4ec521d88e0b5e02ef657fd0d3b303a2789d02948d9b1b6728b60072",
+    "probe.py": "4d494a72fe0584bd8ab6630e96cff8930a503bc188dcb9f23642d326aae7bcff",
     "restarter.py": "90e18202d5360798ac8a9bba956cf5a11f7475248941674cc1fde20a0456ab91",
     "service.py": "8a0145501b5596586633e91b3479d20b3f45aa54f75e0fef858ab5df08d7f70a",
     "static/tailwind.js": "176e894661aa9cdc9a5cba6c720044cbbf7b8bd80d1c9a142a7c24b1b6c50d15",
@@ -26,6 +26,6 @@
     "usage_plugin.py": "d30e2fd2ff35c486cabed7dc7913028fffddee4ab9a8cb9c9c3ecee83ca5c72a",
     "wizard.py": "558b0f1a3699e87d7cafd48abd8ca3eeeb198cb4a7d9ccb0ae054d84dc1d86fe"
   },
-  "release": "v0.3.12",
-  "version": "0.3.12"
+  "release": "v0.3.14",
+  "version": "0.3.14"
 }

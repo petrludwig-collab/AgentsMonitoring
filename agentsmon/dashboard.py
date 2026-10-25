@@ -5,11 +5,12 @@ Pure standard-library HTTP server (no Flask/FastAPI). Serves one self-contained 
 and one availability card per **service** (status dot, Uptime / Availability-SLA / Latency
 metrics, and a day-by-day availability timeline). A background thread probes services on an
 interval and appends to the uptime DB, so just leaving the dashboard running builds history.
-Binds 127.0.0.1 by default; optional HTTP Basic auth (config.dashboard.auth). UI text is English.
+Binds 127.0.0.1 by default; optional HTTP Basic auth (config.dashboard.auth). UI text is Czech (lang=cs, Intl cs-CZ).
 """
 from __future__ import annotations
 
 import base64
+import ipaddress
 import hashlib
 import hmac
 import json
@@ -54,23 +55,23 @@ def _auth_ok(header: str | None, user: str, pwhash: str) -> bool:
 AGENT_TABLE = r"""
   <section class="mb-6" data-svc="KEY" HIDDEN>
     <div class="svc-head flex items-center gap-2.5 mb-3 rounded-lg border px-3 py-2 bg-white border-slate-200">
-      <span class="svc-dot h-3 w-3 rounded-full bg-slate-300 shrink-0"></span>
+      <span class="svc-dot h-3 w-3 rounded-full bg-slate-300 shrink-0" aria-hidden="true"></span>
       <h2 class="text-base font-semibold">TITLE</h2>
-      <span class="agents-count ml-auto text-sm font-medium text-slate-400">loading…</span>
-      <span class="svc-chev text-slate-400 text-xs ml-2 select-none" title="collapse / expand">▾</span>
+      <span class="agents-count ml-auto text-sm font-medium text-slate-400">načítání…</span>
+      <span class="svc-chev text-slate-400 text-xs ml-2 select-none" title="sbalit / rozbalit" aria-hidden="true">▾</span>
     </div>
     <div class="svc-body">
     <div class="rounded-lg border border-slate-200 bg-white overflow-x-auto">
-      <table class="w-full text-sm" style="table-layout:fixed;min-width:680px"><colgroup><col style="width:21%"><col style="width:13%"><col style="width:32%"><col style="width:12%"><col style="width:14%"><col style="width:8%"></colgroup><thead>
+      <table class="w-full text-sm agents-table" style="table-layout:auto"><thead>
         <tr class="text-[11px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
           <th class="text-left font-medium px-2 py-2">Agent</th>
           <th class="text-left font-medium px-2 py-2">Model</th>
-          <th class="text-left font-medium px-2 py-2">Session ID / Port</th>
-          <th class="text-left font-medium px-2 py-2">Started</th>
-          <th class="text-left font-medium px-2 py-2">Status</th>
+          <th class="text-left font-medium px-2 py-2">Relace / port</th>
+          <th class="text-left font-medium px-2 py-2">Spuštěno</th>
+          <th class="text-left font-medium px-2 py-2">Stav</th>
           <th class="text-right font-medium px-2 py-2"></th>
         </tr></thead>
-        <tbody class="agent-rows"><tr><td colspan="6" class="px-3 py-3 text-slate-400">loading…</td></tr></tbody>
+        <tbody class="agent-rows"><tr><td colspan="6" class="px-3 py-3 text-slate-400">načítání…</td></tr></tbody>
       </table>
     </div>
     <p class="agents-note text-[11px] text-slate-400 mt-2">NOTE</p>
@@ -78,72 +79,160 @@ AGENT_TABLE = r"""
   </section>"""
 
 
-PAGE = r"""<!DOCTYPE html><html lang="en"><head>
+PAGE = r"""<!DOCTYPE html><html lang="cs"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agents Monitoring</title>
+<meta name="color-scheme" content="light dark">
+<title>Monitorování agentů</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 <script src="/static/tailwind.js"></script>
-<style>.bar{transition:opacity .15s ease}.bar:hover{opacity:.65}.copied-flash{color:#059669!important;transition:color .1s}#toast{transition:opacity .2s ease}.agent-rows td{overflow:hidden}.sid{display:block;overflow:hidden;text-overflow:ellipsis}</style>
+<style>
+:root{--gap:0.75rem;--touch:44px}
+.bar{transition:opacity .15s ease}.bar:hover{opacity:.65}
+.copied-flash{color:#059669!important;transition:color .1s}
+#toast{transition:opacity .2s ease}
+.agent-rows td{overflow:hidden;vertical-align:middle}
+.sid{display:block;overflow:hidden;text-overflow:ellipsis}
+.sid-btn{display:inline-flex;align-items:center;justify-content:center;min-width:var(--touch);min-height:36px;padding:6px;border-radius:6px;color:#64748b}
+.sid-btn:hover,.sid-btn:focus-visible{color:#0284c7;background:#f1f5f9;outline:2px solid #38bdf8;outline-offset:1px}
+.sid-btn.sid-muted{color:#94a3b8;cursor:default}
+.quota-stack{display:flex;flex-direction:column;gap:4px;min-width:0;max-width:100%}
+.quota-row{display:flex;align-items:center;gap:6px;min-width:0;font-size:12px;line-height:1.25}
+.quota-gauge{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:100%;padding:2px 4px;margin:-2px -4px;border-radius:6px;border:0;background:transparent;cursor:help;font:inherit;color:inherit;text-align:left}
+.quota-gauge:focus-visible{outline:2px solid #38bdf8;outline-offset:1px}
+.quota-gauge[aria-expanded="true"]{background:#f1f5f9}
+.quota-name{flex:0 0 auto;min-width:1.75rem;color:#475569;font-weight:600}
+.quota-track{flex:1 1 3.5rem;min-width:2.5rem;max-width:5.5rem;height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+.quota-fill{display:block;height:100%;border-radius:999px}
+.quota-pct{flex:0 0 auto;font-variant-numeric:tabular-nums;font-weight:600;min-width:3.5rem;text-align:right}
+.quota-reset{flex:0 0 auto;color:#64748b;font-variant-numeric:tabular-nums}
+.quota-state{flex:0 0 auto;font-size:10px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+.quota-state.ok{color:#059669}.quota-state.stale{color:#d97706}.quota-state.unavail{color:#94a3b8}
+.quota-tip{display:none;position:absolute;z-index:40;max-width:min(22rem,calc(100vw - 1.5rem));padding:8px 10px;border-radius:8px;background:#0f172a;color:#f8fafc;font-size:12px;line-height:1.35;box-shadow:0 8px 24px rgba(15,23,42,.25);white-space:normal;word-break:break-word}
+.quota-tip.open{display:block}
+.quota-wrap{position:relative;display:inline-block;max-width:100%}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.agent-act{min-width:var(--touch);min-height:36px;justify-content:center}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;margin-bottom:1rem}
+.toolbar button{min-height:var(--touch);min-width:var(--touch);padding:0 12px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#334155;font-size:13px}
+.toolbar button:hover,.toolbar button:focus-visible{border-color:#94a3b8;outline:2px solid #38bdf8;outline-offset:1px}
+.toolbar button[aria-pressed="true"]{background:#f1f5f9;font-weight:600}
+#app{max-width:min(1480px,100%);padding-left:max(1rem,env(safe-area-inset-left));padding-right:max(1rem,env(safe-area-inset-right))}
+.metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0.75rem}
+@media (max-width:640px){
+  .metric-grid{grid-template-columns:1fr}
+  .quota-row{flex-wrap:wrap}
+  .quota-gauge{flex-wrap:wrap;width:100%}
+  .quota-track{flex:1 1 100%;max-width:none}
+  th,td{font-size:12px}
+}
+@media (min-width:1440px){
+  .quota-track{max-width:7rem}
+}
+@media (prefers-reduced-motion:reduce){
+  .bar,#toast,.copied-flash{transition:none!important}
+}
+@media (prefers-color-scheme:dark){
+  body.bg-slate-50{background-color:#020617!important;color:#e2e8f0!important}
+  .bg-white{background-color:#0f172a!important}
+  .bg-slate-50{background-color:#020617!important}
+  .bg-emerald-50{background-color:rgba(6,78,59,.35)!important}
+  .bg-rose-50{background-color:rgba(136,19,55,.35)!important}
+  .border-slate-200,.border-slate-100{border-color:#1e293b!important}
+  .border-emerald-200{border-color:#065f46!important}
+  .border-rose-200{border-color:#9f1239!important}
+  .text-slate-800,.text-slate-700{color:#e2e8f0!important}
+  .text-slate-600,.text-slate-500{color:#94a3b8!important}
+  .text-slate-400,.text-slate-300{color:#64748b!important}
+  .bg-slate-200,.bg-slate-300{background-color:#334155!important}
+  .bg-orange-100{background-color:rgba(154,52,18,.4)!important}.text-orange-700{color:#fdba74!important}
+  .bg-emerald-100{background-color:rgba(6,95,70,.4)!important}.text-emerald-700{color:#6ee7b7!important}
+  .bg-violet-100{background-color:rgba(91,33,182,.4)!important}.text-violet-700{color:#c4b5fd!important}
+  .bg-amber-100{background-color:rgba(146,64,14,.4)!important}.text-amber-700{color:#fcd34d!important}
+  .bg-rose-100{background-color:rgba(159,18,57,.4)!important}.text-rose-700{color:#fda4af!important}
+  .bg-slate-100{background-color:rgba(51,65,85,.55)!important}
+  .bg-sky-100{background-color:rgba(7,89,133,.4)!important}
+  .text-emerald-600{color:#34d399!important}.text-amber-600{color:#fbbf24!important}
+  .text-rose-600{color:#fb7185!important}.text-sky-600{color:#38bdf8!important}
+  .hover\:bg-slate-100:hover{background-color:#1e293b!important}
+  .hover\:bg-rose-50:hover{background-color:rgba(136,19,55,.35)!important}
+  .sid-btn{color:#94a3b8}.sid-btn:hover,.sid-btn:focus-visible{color:#38bdf8;background:#1e293b}
+  .quota-name{color:#94a3b8}.quota-track{background:#334155}.quota-reset{color:#94a3b8}
+  .quota-state.unavail{color:#64748b}
+  .quota-gauge[aria-expanded="true"]{background:#1e293b}
+  .quota-tip{background:#e2e8f0;color:#0f172a}
+  .toolbar button{background:#0f172a;border-color:#1e293b;color:#e2e8f0}
+  #toast{background:#e2e8f0!important;color:#0f172a!important}
+}
+</style>
 </head><body class="bg-slate-50 text-slate-800 antialiased">
-<div id="toast" class="fixed left-1/2 bottom-5 -translate-x-1/2 bg-slate-800 text-white text-sm px-2 py-1.5 rounded-md shadow-lg opacity-0 pointer-events-none" style="z-index:50">&nbsp;</div>
-<div id="app" class="mx-auto px-5 py-6" style="max-width:850px">
+<div id="toast" class="fixed left-1/2 bottom-5 -translate-x-1/2 bg-slate-800 text-white text-sm px-2 py-1.5 rounded-md shadow-lg opacity-0 pointer-events-none" style="z-index:50" role="status" aria-live="polite">&nbsp;</div>
+<div id="app" class="mx-auto px-5 py-6">
+  <header class="mb-4">
+    <h1 class="text-xl font-semibold tracking-tight">Monitorování agentů</h1>
+    <p class="text-sm text-slate-500 mt-1">Přehled persistentních agentů, kvót poskytovatelů a dostupnosti služeb.</p>
+  </header>
+  <div class="toolbar" role="toolbar" aria-label="Ovládání dashboardu">
+    <button type="button" id="btn-refresh" title="Obnovit teď">Obnovit</button>
+    <button type="button" id="btn-pause" aria-pressed="false" title="Pozastavit automatickou obnovu">Pozastavit obnovu</button>
+  </div>
 AGENT_TABLES
   <div id="services"></div>
-  <p class="text-center text-[11px] text-slate-300" id="footer">auto-refresh</p>
+  <p class="text-center text-[11px] text-slate-300" id="footer">automatická obnova</p>
 </div>
 
 <template id="svc-tpl">
   <section class="mb-6">
     <div class="svc-head flex items-center gap-2.5 mb-3 rounded-lg border px-3 py-2 bg-white border-slate-200">
-      <span class="svc-dot h-3 w-3 rounded-full bg-slate-300 shrink-0"></span>
+      <span class="svc-dot h-3 w-3 rounded-full bg-slate-300 shrink-0" aria-hidden="true"></span>
       <h2 class="svc-name text-base font-semibold"></h2>
-      <span class="svc-state ml-auto text-sm font-medium text-slate-400">loading…</span>
-      <span class="svc-chev text-slate-400 text-xs ml-2 select-none" title="collapse / expand">▾</span>
+      <span class="svc-state ml-auto text-sm font-medium text-slate-400">načítání…</span>
+      <span class="svc-chev text-slate-400 text-xs ml-2 select-none" title="sbalit / rozbalit" aria-hidden="true">▾</span>
     </div>
+    <p class="svc-detail text-xs text-slate-500 mb-3 px-1" role="status"></p>
     <div class="svc-body">
-    <div class="grid grid-cols-3 gap-3 mb-3">
+    <div class="metric-grid mb-3">
       <div class="rounded-lg border border-slate-200 bg-white p-3">
-        <p class="text-[11px] uppercase tracking-wide text-slate-400">Uptime</p>
+        <p class="text-[11px] uppercase tracking-wide text-slate-400">Doba běhu</p>
         <p class="m-uptime text-lg font-semibold mt-0.5">–</p>
-        <p class="text-[11px] text-slate-400">since first check or last outage</p>
+        <p class="text-[11px] text-slate-400">od první kontroly nebo posledního výpadku</p>
       </div>
       <div class="rounded-lg border border-slate-200 bg-white p-3">
-        <p class="text-[11px] uppercase tracking-wide text-slate-400">Availability</p>
+        <p class="text-[11px] uppercase tracking-wide text-slate-400">Dostupnost</p>
         <p class="m-sla text-lg font-semibold mt-0.5">–</p>
         <p class="m-sla-sub text-[11px] text-slate-400">SLA</p>
       </div>
       <div class="rounded-lg border border-slate-200 bg-white p-3">
-        <p class="m-x-label text-[11px] uppercase tracking-wide text-slate-400">Latency</p>
+        <p class="m-x-label text-[11px] uppercase tracking-wide text-slate-400">Latence</p>
         <p class="m-x text-lg font-semibold mt-0.5">–</p>
-        <p class="m-x-sub text-[11px] text-slate-400">health check</p>
+        <p class="m-x-sub text-[11px] text-slate-400">kontrola zdraví</p>
       </div>
     </div>
     <div class="svc-rows-wrap rounded-lg border border-slate-200 bg-white overflow-x-auto mb-3" hidden>
-      <table class="w-full text-sm" style="table-layout:fixed;min-width:680px"><colgroup><col style="width:24%"><col style="width:30%"><col style="width:12%"><col style="width:12%"><col style="width:22%"></colgroup><thead>
+      <table class="w-full text-sm"><thead>
         <tr class="text-[11px] uppercase tracking-wide text-slate-400 border-b border-slate-200">
-          <th class="text-left font-medium px-2 py-2">Check</th>
-          <th class="rows-value-label text-left font-medium px-2 py-2">Address</th>
-          <th class="text-left font-medium px-2 py-2">Latency</th>
-          <th class="text-left font-medium px-2 py-2">Uptime</th>
-          <th class="text-left font-medium px-2 py-2">Status</th>
+          <th class="text-left font-medium px-2 py-2">Kontrola</th>
+          <th class="rows-value-label text-left font-medium px-2 py-2">Adresa</th>
+          <th class="text-left font-medium px-2 py-2">Latence</th>
+          <th class="text-left font-medium px-2 py-2">Běh</th>
+          <th class="text-left font-medium px-2 py-2">Stav</th>
         </tr></thead>
         <tbody class="svc-rows"></tbody>
       </table>
     </div>
     <div class="rounded-lg border border-slate-200 bg-white p-4">
-      <div class="flex items-center justify-between mb-2">
-        <h3 class="text-xs font-semibold text-slate-500">Availability History</h3>
+      <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <h3 class="text-xs font-semibold text-slate-500">Historie dostupnosti</h3>
         <span class="svc-tl-window text-[11px] text-slate-400"></span>
       </div>
-      <div class="svc-timeline flex items-end gap-[2px] h-8"></div>
-      <div class="flex items-center justify-between mt-2 text-[11px] text-slate-400">
+      <div class="svc-timeline flex items-end gap-[2px] h-8" role="img" aria-label="Historie dostupnosti"></div>
+      <div class="flex items-center justify-between mt-2 text-[11px] text-slate-400 flex-wrap gap-2">
         <span class="svc-tl-start"></span>
         <div class="flex items-center gap-3">
-          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-sm bg-emerald-500"></span>Operational</span>
-          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-sm bg-rose-500"></span>Outage</span>
-          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-sm bg-slate-200"></span>No data</span>
+          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-sm bg-emerald-500" aria-hidden="true"></span>V provozu</span>
+          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-sm bg-rose-500" aria-hidden="true"></span>Výpadek</span>
+          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-sm bg-slate-200" aria-hidden="true"></span>Bez dat</span>
         </div>
-        <span>now</span>
+        <span>teď</span>
       </div>
     </div>
     </div>
@@ -152,104 +241,200 @@ AGENT_TABLES
 
 <script>
 const STATE = {
-  operational: ["bg-emerald-500", "Operational", "text-emerald-600", "bg-emerald-50 border-emerald-200"],
-  outage:      ["bg-rose-500", "Outage", "text-rose-600", "bg-rose-50 border-rose-200"],
-  nodata:      ["bg-slate-300", "No data / not running", "text-slate-400", "bg-white border-slate-200"],
+  operational: ["bg-emerald-500", "V provozu", "text-emerald-600", "bg-emerald-50 border-emerald-200"],
+  outage:      ["bg-rose-500", "Výpadek", "text-rose-600", "bg-rose-50 border-rose-200"],
+  nodata:      ["bg-slate-300", "Bez dat / neběží", "text-slate-400", "bg-white border-slate-200"],
 };
 const VENDOR = { "anthropic":"bg-orange-100 text-orange-700", "openai":"bg-emerald-100 text-emerald-700",
   "google":"bg-violet-100 text-violet-700", "gold":"bg-amber-100 text-amber-700",
-  "red":"bg-rose-100 text-rose-700", "other":"bg-slate-100 text-slate-600" };
-// Optional background highlight behind the agent NAME (like the model tags), text stays normal.
+  "red":"bg-rose-100 text-rose-700", "cursor":"bg-sky-100 text-sky-700",
+  "other":"bg-slate-100 text-slate-600" };
 const NAME_BG = { "red":"bg-rose-100", "gold":"bg-amber-100", "green":"bg-emerald-100", "blue":"bg-sky-100" };
+const LOCALE="cs-CZ";
+const SERVICE_LABELS={
+  "Multi-Agent System Availability":"Dostupnost multiagentního systému",
+  "Multi-agent system availability":"Dostupnost multiagentního systému",
+  "Telegram Bridge":"Telegram most",
+  "LANA Hermes Telegram Lane":"LANA Hermes Telegram lane",
+};
+function serviceDisplayName(name){return SERVICE_LABELS[name]||name;}
 function fmtDuration(s){if(s==null)return "–";const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
-  return d?`${d}d ${h}h`:h?`${h}h ${m}m`:`${m}m`;}
-function fmtTime(u){return u?new Date(u*1000).toLocaleString():"";}
+  return d?`${d} d ${h} h`:h?`${h} h ${m} min`:`${m} min`;}
+function fmtTime(u){return u?new Date(u*1000).toLocaleString(LOCALE):"";}
 function fmtLat(ms){return ms==null?"–":(ms<1?"<1 ms":ms+" ms");}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 const q=(r,s)=>r.querySelector(s);
+let paused=false, pollTimer=null;
+let tipSeq=0;
 
 function renderTimeline(root, buckets, windowDays){
   const tl=q(root,".svc-timeline"); tl.innerHTML=""; const GREEN=98;
   buckets.forEach(b=>{
     const el=document.createElement("div"); let cls,status;
-    if(b.uptime_pct==null){cls="bg-slate-200";status="no data";}
-    else if(b.uptime_pct>=GREEN){cls="bg-emerald-500";status=`${b.uptime_pct}% uptime`;}
-    else{cls="bg-rose-500";status=`outage (${b.uptime_pct}% uptime)`;}
+    if(b.uptime_pct==null){cls="bg-slate-200";status="bez dat";}
+    else if(b.uptime_pct>=GREEN){cls="bg-emerald-500";status=`${b.uptime_pct} % dostupnost`;}
+    else{cls="bg-rose-500";status=`výpadek (${b.uptime_pct} % dostupnost)`;}
     el.className="bar flex-1 rounded-sm h-full "+cls;
-    el.title=`${new Date(b.start*1000).toLocaleDateString()} · ${status}`;
+    el.title=`${new Date(b.start*1000).toLocaleDateString(LOCALE)} · ${status}`;
     tl.appendChild(el);
   });
-  q(root,".svc-tl-window").textContent="last "+windowDays+" days";
-  if(buckets.length) q(root,".svc-tl-start").textContent=new Date(buckets[0].start*1000).toLocaleDateString();
+  q(root,".svc-tl-window").textContent="posledních "+windowDays+" dní";
+  if(buckets.length) q(root,".svc-tl-start").textContent=new Date(buckets[0].start*1000).toLocaleDateString(LOCALE);
 }
 function renderService(root, s){
   const st=STATE[s.state]||STATE.nodata;
+  const detail=q(root,".svc-detail"); if(detail) detail.textContent=s.detail||"";
   q(root,".svc-head").className="svc-head flex items-center gap-2.5 mb-3 rounded-lg border px-3 py-2 cursor-pointer "+st[3];
   q(root,".svc-dot").className="svc-dot h-3 w-3 rounded-full shrink-0 "+st[0];
   const se=q(root,".svc-state"); se.textContent=st[1]; se.className="svc-state ml-auto text-sm font-medium "+st[2];
   q(root,".m-uptime").textContent=fmtDuration(s.uptime_seconds);
   q(root,".m-sla").textContent=s.sla!=null?s.sla.toFixed(2)+" %":"–";
-  q(root,".m-sla-sub").textContent="over "+s.sla_window_days+" days ("+(s.sla_samples||0)+" samples)";
+  q(root,".m-sla-sub").textContent="za "+s.sla_window_days+" dní ("+(s.sla_samples||0)+" vzorků)";
   if(s.metric==="agents"){
-    q(root,".m-x-label").textContent="Agents";
-    q(root,".m-x").textContent=(s.metric_value!=null?s.metric_value:"–")+(s.metric_value!=null?" running":"");
-    q(root,".m-x-sub").textContent="live in tmux";
+    q(root,".m-x-label").textContent="Agenti";
+    q(root,".m-x").textContent=(s.metric_value!=null?s.metric_value:"–")+(s.metric_value!=null?" běží":"");
+    q(root,".m-x-sub").textContent="živě v tmux";
   }else if(s.metric==="system_latency"){
-    q(root,".m-x-label").textContent="Avg latency";
+    q(root,".m-x-label").textContent="Průměrná latence";
     q(root,".m-x").textContent=fmtLat(s.system_latency_ms);
-    q(root,".m-x-sub").textContent=(s.system_latency_n||0)+" source"+(s.system_latency_n===1?"":"s");
+    q(root,".m-x-sub").textContent=(s.system_latency_n||0)+" zdroj"+(s.system_latency_n===1?"":"ů");
   }else if(s.metric==="avg_latency"){
-    q(root,".m-x-label").textContent="Avg latency";
+    q(root,".m-x-label").textContent="Průměrná latence";
     q(root,".m-x").textContent=fmtLat(s.avg_latency_ms);
-    q(root,".m-x-sub").textContent="over "+s.sla_window_days+" days";
+    q(root,".m-x-sub").textContent="za "+s.sla_window_days+" dní";
   }else{
-    q(root,".m-x-label").textContent="Latency";
+    q(root,".m-x-label").textContent="Latence";
     q(root,".m-x").textContent=fmtLat(s.latency_ms);
-    q(root,".m-x-sub").textContent=s.metric_sub||"health check";
+    q(root,".m-x-sub").textContent=s.metric_sub||"kontrola zdraví";
   }
   renderTimeline(root, s.timeline, s.timeline_days);
   renderRows(root, s.rows||[], s.row_details===true);
 }
-// Module rows (one website / tunnel / db per line) — same shape as the agent tables.
 function renderRows(root, rows, details=false){
   const wrap=q(root,".svc-rows-wrap"); if(!wrap) return;
   wrap.hidden=!rows.length; if(!rows.length) return;
-  q(root,".rows-value-label").textContent=details?"Detail":"Address";
+  q(root,".rows-value-label").textContent=details?"Detail":"Adresa";
   const tb=q(root,".svc-rows");
   tb.innerHTML=rows.map(r=>{
     const st=STATE[r.state]||STATE.nodata;
     const addr=r.url?r.url.replace(/^https?:\/\//,"").replace(/\/$/,""):"";
-    const sla=r.sla!=null?` · ${r.sla.toFixed(2)} % / ${r.sla_samples||0} samples`:"";
+    const sla=r.sla!=null?` · ${r.sla.toFixed(2)} % / ${r.sla_samples||0} vzorků`:"";
     return `<tr class="border-b border-slate-100 last:border-0">`+
       `<td class="px-2 py-1.5 font-medium text-slate-700 whitespace-nowrap">${esc(r.name)}</td>`+
       `<td class="px-2 py-1.5"><span class="text-xs text-slate-500 ${details?'break-words':'font-mono whitespace-nowrap'}">${esc(details?(r.detail||''):addr)}</span></td>`+
       `<td class="px-2 py-1.5 text-slate-600 text-xs whitespace-nowrap">${fmtLat(r.latency_ms)}</td>`+
-      `<td class="px-2 py-1.5 text-slate-600 text-xs whitespace-nowrap" title="time since the last real outage${esc(sla)}">${fmtDuration(r.uptime_seconds)}</td>`+
-      `<td class="px-2 py-1.5" title="${esc(r.detail||"")}${r.last_ts?" · "+esc(fmtTime(r.last_ts)):""}"><span class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium ${st[2]}"><span class="h-2 w-2 rounded-full ${st[0]} shrink-0"></span>${st[1]}</span></td>`+
+      `<td class="px-2 py-1.5 text-slate-600 text-xs whitespace-nowrap" title="čas od posledního skutečného výpadku${esc(sla)}">${fmtDuration(r.uptime_seconds)}</td>`+
+      `<td class="px-2 py-1.5" title="${esc(r.detail||"")}${r.last_ts?" · "+esc(fmtTime(r.last_ts)):""}"><span class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium ${st[2]}"><span class="h-2 w-2 rounded-full ${st[0]} shrink-0" aria-hidden="true"></span>${st[1]}</span></td>`+
     `</tr>`;}).join("");
 }
-function renderCell(cell){
+function quotaStateClass(state){
+  const s=String(state||"").toUpperCase();
+  if(s==="OK") return "ok";
+  if(s==="STALE"||s==="ZASTARALÉ") return "stale";
+  return "unavail";
+}
+function gaugeMetrics(b){
+  const used=Number(b.percent);
+  const state=String(b.state||"").toUpperCase();
+  const remRaw=b.remaining;
+  const remaining=(remRaw==null||remRaw==="")?(isFinite(used)?Math.max(0,Math.min(100,100-used)):null):Number(remRaw);
+  const unavail=state==="UNAVAILABLE"||state==="NEDOSTUPNÉ"||state==="N/A"||remaining==null||!isFinite(used);
+  const remShow=unavail?0:Math.max(0,Math.min(100,remaining));
+  const fillCls=unavail?"bg-slate-300":(used>=90?"bg-rose-500":used>=70?"bg-amber-500":"bg-emerald-500");
+  const pctTxt=unavail?"neznámé":`${Number(Number(remaining).toFixed(1))} % zbývá`;
+  const usedTxt=unavail?"neznámé":`${Number(used.toFixed(1))} % využito`;
+  const reset=b.reset_label?String(b.reset_label):(String(b.title||"").match(/reset\s+([^·|/]+)/i)||[])[1];
+  const resetTxt=reset?`reset ${String(reset).trim()}`:"reset —";
+  const tip=[b.title||"", usedTxt, pctTxt, resetTxt, state?`stav ${state}`:"", b.freshness||""].filter(Boolean).join(" · ");
+  const aria=unavail
+    ?`${b.label||"kvóta"}: údaj není dostupný${state?`, ${state}`:""}`
+    :`${b.label||"kvóta"}: zbývá ${remaining} procent, využito ${used} procent${state?`, stav ${state}`:""}`;
+  return {used, state, remaining, unavail, remShow, fillCls, pctTxt, resetTxt, tip, aria};
+}
+function placeTip(btn, tip){
+  const r=btn.getBoundingClientRect();
+  const pad=8; const tw=Math.min(352, window.innerWidth-2*pad);
+  let left=Math.min(Math.max(pad, r.left), window.innerWidth-tw-pad);
+  let top=r.bottom+6;
+  tip.style.width=tw+"px";
+  tip.style.left=left+"px";
+  tip.style.top=top+"px";
+  tip.style.position="fixed";
+  requestAnimationFrame(()=>{
+    const tr=tip.getBoundingClientRect();
+    if(tr.bottom>window.innerHeight-pad){
+      tip.style.top=Math.max(pad, r.top-tr.height-6)+"px";
+    }
+    if(tr.right>window.innerWidth-pad){
+      tip.style.left=Math.max(pad, window.innerWidth-tr.width-pad)+"px";
+    }
+  });
+}
+function closeQuotaTips(except){
+  document.querySelectorAll(".quota-tip.open").forEach(t=>{
+    if(except && t===except) return;
+    t.classList.remove("open");
+    const btn=document.querySelector(`[aria-describedby="${t.id}"]`);
+    if(btn) btn.setAttribute("aria-expanded","false");
+  });
+}
+function renderAgentGauge(b){
+  const m=gaugeMetrics(b);
+  const id="qtip-"+(++tipSeq);
+  const short=m.unavail?"—":`${Math.round(m.remShow)}%`;
+  return `<span class="quota-wrap">`+
+    `<button type="button" class="quota-gauge" aria-expanded="false" aria-describedby="${id}" title="${esc(m.tip)}" data-quota-tip>`+
+      `<span class="quota-name">${esc(b.label||"")}</span>`+
+      `<span class="quota-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${m.unavail?0:Math.round(m.remShow)}" aria-valuetext="${esc(m.aria)}" aria-label="${esc(m.aria)}"><span class="quota-fill ${m.fillCls}" style="width:${m.remShow}%"></span></span>`+
+      `<span class="sr-only">${esc(m.aria)}</span>`+
+      `<span aria-hidden="true" class="text-[11px] text-slate-500 font-semibold tabular-nums">${esc(short)}</span>`+
+    `</button>`+
+    `<span id="${id}" role="tooltip" class="quota-tip">${esc(m.tip)}</span>`+
+  `</span>`;
+}
+function renderQuotaBar(b){
+  const m=gaugeMetrics(b);
+  return `<div class="quota-row" title="${esc(m.tip)}">`+
+    `<span class="quota-name">${esc(b.label||"")}</span>`+
+    `<span class="quota-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${m.unavail?0:Math.round(m.remShow)}" aria-valuetext="${esc(m.aria)}" aria-label="${esc(m.aria)}"><span class="quota-fill ${m.fillCls}" style="width:${m.remShow}%"></span></span>`+
+    `<span class="quota-pct">${esc(m.pctTxt)}</span>`+
+    `<span class="quota-reset">${esc(m.resetTxt)}</span>`+
+    (m.state?`<span class="quota-state ${quotaStateClass(m.state)}">${esc(m.state)}</span>`:"")+
+  `</div>`;
+}
+function renderCell(cell, {compact=false}={}){
   if(!cell) return "–";
   const tones={ok:"text-emerald-600",warning:"text-amber-600",error:"text-rose-600",muted:"text-slate-400"};
-  const bars=(cell.bars||[]).map(b=>`<div title="${esc(b.title)}" class="mb-1"><span>${esc(b.label)} ${b.percent}%</span><div class="h-1 bg-slate-100 rounded"><div class="h-1 rounded ${b.percent>=90?'bg-rose-500':b.percent>=70?'bg-amber-500':'bg-emerald-500'}" style="width:${b.percent}%"></div></div></div>`).join("");
-  return `<span title="${esc(cell.title)}" class="${tones[cell.tone]||''}">${esc(cell.text)}</span>`+bars;
+  const bars=cell.bars||[];
+  if(bars.length){
+    // Persistent agents: exactly one simple gauge per column (5h / Týden).
+    const shown=compact?bars.slice(0,1):bars;
+    if(compact){
+      return `<div class="quota-stack">${shown.map(renderAgentGauge).join("")}</div>`;
+    }
+    return `<div class="quota-stack" title="${esc(cell.title||"")}">${shown.map(renderQuotaBar).join("")}</div>`;
+  }
+  return `<span title="${esc(cell.title||"")}" class="${tones[cell.tone]||''} whitespace-nowrap text-xs">${esc(cell.text||"–")}</span>`;
+}
+function cellFor(agent, col){
+  const cells=agent.cells||{};
+  if(cells[col.id]) return cells[col.id];
+  for(const id of (col.aliases||[])){ if(cells[id]) return cells[id]; }
+  return null;
 }
 function renderColumns(root,columns){
-  const table=q(root,"table"), head=q(root,"thead tr");
+  const head=q(root,"thead tr");
   head.querySelectorAll(".plugin-column").forEach(n=>n.remove());
   columns.forEach(c=>{const th=document.createElement("th");th.className="plugin-column text-left font-medium px-2 py-2";th.textContent=c.title;head.insertBefore(th,head.lastElementChild);});
-  const widths=[170,105,260,97,113,...columns.map(()=>100),65];
-  q(root,"colgroup").innerHTML=columns.length?widths.map(w=>`<col style="width:${w}px">`).join(''):'<col style="width:21%"><col style="width:13%"><col style="width:32%"><col style="width:12%"><col style="width:14%"><col style="width:8%">';
-  table.style.minWidth=(columns.length?810+columns.length*100:680)+"px";
 }
 function renderActions(a,table){
-  const stopped=a.status==="Stopped (manual)";
-  const defs=a.plugin?(a.row_actions||[]):(a.actions===false?[]:[{id:"restart",label:"Restart "+a.name,icon:"restart"},
-    stopped?{id:"stop",label:"Remove "+a.name,icon:"stop",confirm:`Remove agent "${a.name}" from Agents Monitoring? Its conversation files stay on disk.`}
-           :{id:"stop",label:"Stop "+a.name,icon:"stop"}]);
+  const stopped=a.status==="Stopped (manual)"||a.status==="Zastaveno (ručně)";
+  const defs=a.plugin?(a.row_actions||[]):(a.actions===false?[]:[{id:"restart",label:"Restartovat "+a.name,icon:"restart"},
+    stopped?{id:"stop",label:"Odebrat "+a.name,icon:"stop",confirm:`Odebrat agenta „${a.name}“ z Monitorování agentů? Soubory konverzace zůstanou na disku.`}
+           :{id:"stop",label:"Zastavit "+a.name,icon:"stop"}]);
   const paths={restart:'M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6',stop:'M18 6 6 18M6 6l12 12',run:'M8 5l11 7-11 7z'};
-  const buttons=defs.map(x=>`<button class="agent-act inline-flex align-middle p-1 rounded text-slate-400 ${x.icon==='stop'?'ml-0.5 hover:text-rose-600 hover:bg-rose-50':'hover:text-sky-600 hover:bg-slate-100'}" data-act="${esc(x.id)}" data-name="${esc(a.name)}" ${a.plugin?`data-table="${esc(table)}" data-row="${esc(a.id)}"`:''} data-confirm="${esc(x.confirm||'')}" title="${esc(x.label)}"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${paths[x.icon]||paths.run}"/></svg></button>`).join("");
-  return buttons+((a.actions===false||a.actions_locked)?'<span class="text-xs text-slate-300 ml-0.5 align-middle" title="Actions controlled by the provider">🔒</span>':'');
+  const buttons=defs.map(x=>`<button type="button" class="agent-act inline-flex align-middle p-1 rounded text-slate-400 ${x.icon==='stop'?'ml-0.5 hover:text-rose-600 hover:bg-rose-50':'hover:text-sky-600 hover:bg-slate-100'}" data-act="${esc(x.id)}" data-name="${esc(a.name)}" ${a.plugin?`data-table="${esc(table)}" data-row="${esc(a.id)}"`:''} data-confirm="${esc(x.confirm||'')}" title="${esc(x.label)}" aria-label="${esc(x.label)}"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[x.icon]||paths.run}"/></svg></button>`).join("");
+  return buttons+((a.actions===false||a.actions_locked)?'<span class="text-xs text-slate-300 ml-0.5 align-middle" title="Akce řídí poskytovatel">🔒</span>':'');
 }
 function renderAgents(root, agents, summary=null, columns=[]){
   renderColumns(root, columns);
@@ -258,70 +443,98 @@ function renderAgents(root, agents, summary=null, columns=[]){
   q(root,".svc-head").className="svc-head flex items-center gap-2.5 mb-3 rounded-lg border px-3 py-2 cursor-pointer "+(on?"bg-emerald-50 border-emerald-200":"bg-white border-slate-200");
   q(root,".svc-dot").className="svc-dot h-3 w-3 rounded-full shrink-0 "+(on?"bg-emerald-500":"bg-slate-300");
   const cnt=q(root,".agents-count");
-  // Use the same health summary for every provider's table.
-  cnt.textContent=`${running}/${agents.length} healthy`;
+  cnt.textContent=`${running}/${agents.length} v pořádku`;
   cnt.className="agents-count ml-auto text-sm font-medium "+(agents.length&&running===agents.length?"text-emerald-600":running?"text-amber-600":"text-slate-400");
   if(summary){
     const state=summary.up?STATE.operational:(summary.rows.length||summary.error?STATE.outage:STATE.nodata);
     q(root,".svc-head").className="svc-head flex items-center gap-2.5 mb-3 rounded-lg border px-3 py-2 cursor-pointer "+state[3];
     q(root,".svc-dot").className="svc-dot h-3 w-3 rounded-full shrink-0 "+state[0];
-    cnt.textContent=`${running}/${agents.length} healthy`;
+    cnt.textContent=`${running}/${agents.length} v pořádku`;
     cnt.className="agents-count ml-auto text-sm font-medium "+state[2];
     q(root,".agents-note").textContent=summary.error||summary.note||"";
   }
-  if(!agents.length){tb.innerHTML=`<tr><td colspan="${6+columns.length}" class="px-3 py-3 text-slate-400">${esc(summary?(summary.error||"No agents found."):"No tmux sessions found.")}</td></tr>`;return;}
+  if(!agents.length){tb.innerHTML=`<tr><td colspan="${6+columns.length}" class="px-3 py-3 text-slate-400">${esc(summary?(summary.error||"Žádní agenti."):"Žádné tmux relace.")}</td></tr>`;return;}
   tb.innerHTML="";
+  const svgIcon=(d)=>`<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+  const ICO_SESSION=svgIcon("M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71");
+  const ICO_PORT=svgIcon("M4 9h16M4 15h16M10 3v18M14 3v18");
+  const ICO_NONE=svgIcon("M12 8v4M12 16h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0");
   agents.forEach(a=>{
     const tcls=VENDOR[a.vendor]||"bg-slate-100 text-slate-600";
     const copy=a.resume_cmd||a.session_id||"";
-    const tip=copy?`${copy} (click to copy)`:"no resume";
     let sid;
     if(a.session_id){
-      sid=`<span class="sid font-mono text-xs text-slate-600 whitespace-nowrap cursor-pointer hover:text-sky-600" title="${esc(tip)}" data-copy="${esc(copy)}">${esc(a.session_id)}</span>`;
+      const tip=[a.session_id, a.session_detail||"", copy&&copy!==a.session_id?copy:"", "kliknutím zkopírujete resume"].filter(Boolean).join(" · ");
+      sid=`<button type="button" class="sid-btn" title="${esc(tip)}" aria-label="Kopírovat relaci ${esc(a.session_id)}" data-copy="${esc(copy)}">${ICO_SESSION}</button>`;
     }else if(a.kind==="daemon" && a.port){
-      // Daemons (gateways) have no session id — show the port they actually listen on instead.
-      sid=`<span class="font-mono text-xs text-slate-500 whitespace-nowrap" title="gateway port">:${a.port}</span>`;
+      sid=`<span class="sid-btn sid-muted" title="port brány :${esc(a.port)}" aria-label="Port ${esc(a.port)}">${ICO_PORT}</span>`;
     }else{
-      sid=`<span class="text-xs text-slate-300 cursor-help" title="${esc(tip)}">— none</span>`;
+      sid=`<span class="sid-btn sid-muted" title="bez relace" aria-label="Bez relace">${ICO_NONE}</span>`;
     }
     const ok=a.alive&&!a.needs_login; const dot=a.needs_login?"bg-amber-500":(ok?"bg-emerald-500":(a.plugin?"bg-rose-500":"bg-slate-300"));
-    // Health is the visible status for every agent; latency is supplementary detail.
-    const statusTxt=a.status||(ok?"Running":"Idle");
+    const statusTxt=a.status||(ok?"Běží":"Nečinný");
     const statusTip=[a.status_detail||a.status,
-      ok&&a.latency_ms!=null?`latency ${fmtLat(a.latency_ms)}`:""].filter(Boolean).join(" · ");
+      ok&&a.latency_ms!=null?`latence ${fmtLat(a.latency_ms)}`:""].filter(Boolean).join(" · ");
     const stCls=a.needs_login?"text-amber-600":(ok?"text-slate-600":"text-slate-400");
     const tr=document.createElement("tr"); tr.className="border-b border-slate-100 last:border-0";
     const nameBg=NAME_BG[a.name_color];
     const nameInner=nameBg?`<span class="inline-block rounded px-1.5 py-0.5 ${nameBg}">${esc(a.name)}</span>`:esc(a.name);
-    // Only tmux agents can be attached to; daemons (kind "daemon", e.g. OpenClaw/Hermes) aren't in
-    // tmux. For a tmux agent, clicking its name copies the attach command (toast feedback so the
-    // column width never jumps).
     const attachCmd=`tmux attach -t "${a.tmux_session||a.name}"`;
     const nameCell=(a.kind!=="daemon")
-      ? `<span class="agent-name cursor-pointer hover:text-sky-600" data-copy="${esc(attachCmd)}" title="${esc(attachCmd)} (click to copy)">${nameInner}</span>`
+      ? `<span class="agent-name cursor-pointer hover:text-sky-600" data-copy="${esc(attachCmd)}" title="${esc(attachCmd)} (kliknutím zkopírujete)">${nameInner}</span>`
       : nameInner;
-    // Telegram deep-link icon for agents bridged to a bot (opens t.me/<bot> in a new tab).
-    const tg=a.telegram_url?` <a href="${esc(a.telegram_url)}" target="_blank" rel="noopener" title="Open @${esc(a.telegram_bot)} in Telegram" class="inline-flex align-middle ml-1 hover:opacity-70"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="#229ED9"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.27 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg></a>`:"";
-    const recovery=a.restart_warning?`<br><span class="text-[11px] text-amber-600" title="${esc(a.restart_warning)}">⚠ Fresh conversation</span>`:"";
+    const tg=a.telegram_url?` <a href="${esc(a.telegram_url)}" target="_blank" rel="noopener" title="Otevřít @${esc(a.telegram_bot)} v Telegramu" aria-label="Telegram @${esc(a.telegram_bot)}" class="inline-flex align-middle ml-1 hover:opacity-70"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="#229ED9" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.27 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg></a>`:"";
+    const recovery=a.restart_warning?`<br><span class="text-[11px] text-amber-600" title="${esc(a.restart_warning)}">⚠ Nová konverzace</span>`:"";
     tr.innerHTML=
       `<td class="px-2 py-1.5 font-medium text-slate-700 whitespace-nowrap">${nameCell}${tg}${recovery}</td>`+
-      `<td class="px-2 py-1.5 whitespace-nowrap"><span title="${esc(a.account?'Account: '+a.account:a.label)}" class="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${tcls}">${esc(a.label)}</span>${a.metadata_error?'<br><span class="text-[11px] text-amber-600">Incomplete data</span>':""}</td>`+
+      `<td class="px-2 py-1.5 whitespace-nowrap"><span title="${esc(a.account?'Účet: '+a.account:a.label)}" class="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${tcls}">${esc(a.label)}</span>${a.metadata_error?'<br><span class="text-[11px] text-amber-600">Neúplná data</span>':""}</td>`+
       `<td class="px-2 py-1.5">${sid}</td>`+
-      `<td class="px-2 py-1.5 text-slate-500 text-xs whitespace-nowrap" title="${esc(a.status_detail||'')}">${a.age!=null?"ago "+fmtDuration(a.age):"–"}</td>`+
-      `<td class="px-2 py-1.5" title="${esc(statusTip)}"><span class="inline-flex items-center gap-1.5 whitespace-nowrap ${stCls}"><span class="h-2 w-2 rounded-full ${dot} shrink-0"></span><span class="flex flex-col">${esc(statusTxt)}</span></span></td>`+
-      columns.map(c=>`<td class="px-2 py-1.5 text-xs">${renderCell((a.cells||{})[c.id])}</td>`).join("")+
+      `<td class="px-2 py-1.5 text-slate-500 text-xs whitespace-nowrap" title="${esc(a.status_detail||'')}">${a.age!=null?"před "+fmtDuration(a.age):"–"}</td>`+
+      `<td class="px-2 py-1.5" title="${esc(statusTip)}"><span class="inline-flex items-center gap-1.5 whitespace-nowrap ${stCls}"><span class="h-2 w-2 rounded-full ${dot} shrink-0" aria-hidden="true"></span><span class="flex flex-col">${esc(statusTxt)}</span></span></td>`+
+      columns.map(c=>`<td class="px-2 py-1.5 text-xs">${renderCell(cellFor(a,c),{compact:root.dataset.svc==="agents"})}</td>`).join("")+
       `<td class="px-2 py-1.5 text-right whitespace-nowrap">${renderActions(a, root.dataset.svc)}</td>`;
     tb.appendChild(tr);
   });
 }
-// Collapsible blocks. The first OPEN_BY_DEFAULT blocks (agents table + the first service cards)
-// start expanded, the rest fold to their header line; a click on any header toggles it and the
-// choice is remembered per block in localStorage (a long list of modules stays scannable).
+document.addEventListener("click",e=>{
+  const btn=e.target.closest("[data-quota-tip]");
+  if(!btn){ closeQuotaTips(); return; }
+  const tip=document.getElementById(btn.getAttribute("aria-describedby"));
+  if(!tip) return;
+  const open=btn.getAttribute("aria-expanded")==="true";
+  closeQuotaTips(open?null:tip);
+  if(open){ btn.setAttribute("aria-expanded","false"); tip.classList.remove("open"); return; }
+  btn.setAttribute("aria-expanded","true"); tip.classList.add("open"); placeTip(btn, tip);
+});
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape") closeQuotaTips();
+  const btn=e.target.closest("[data-quota-tip]");
+  if(!btn||(e.key!=="Enter"&&e.key!==" ")) return;
+  e.preventDefault(); btn.click();
+});
+document.addEventListener("focusin",e=>{
+  const btn=e.target.closest("[data-quota-tip]");
+  if(!btn) return;
+  const tip=document.getElementById(btn.getAttribute("aria-describedby"));
+  if(!tip) return;
+  closeQuotaTips(tip); btn.setAttribute("aria-expanded","true"); tip.classList.add("open"); placeTip(btn, tip);
+});
+document.addEventListener("focusout",e=>{
+  const btn=e.target.closest("[data-quota-tip]");
+  if(!btn) return;
+  setTimeout(()=>{
+    if(document.activeElement&&document.activeElement.closest("[data-quota-tip]")===btn) return;
+    closeQuotaTips();
+  },0);
+});
+window.addEventListener("resize",()=>closeQuotaTips());
+window.addEventListener("scroll",()=>closeQuotaTips(), true);
 const OPEN_BY_DEFAULT=3;
 const collapseKey=n=>"agentsmon.collapsed:"+n;
 function setCollapsed(root,collapsed,persist){
   const b=q(root,".svc-body"),c=q(root,".svc-chev"); if(!b) return;
   b.hidden=collapsed; if(c) c.textContent=collapsed?"▸":"▾"; root.dataset.collapsed=collapsed?"1":"0";
+  const head=q(root,".svc-head"); if(head) head.setAttribute("aria-expanded", collapsed?"false":"true");
   if(persist){ try{ localStorage.setItem(collapseKey(root.dataset.cname||""),collapsed?"1":"0"); }catch(e){} }
 }
 function initCollapse(root,name,index){
@@ -334,10 +547,16 @@ document.addEventListener("click",e=>{
   const root=h.closest("section"); if(!root) return;
   setCollapsed(root, root.dataset.collapsed!=="1", true);
 });
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Enter"&&e.key!==" ") return;
+  const h=e.target.closest(".svc-head"); if(!h) return;
+  e.preventDefault();
+  const root=h.closest("section"); if(!root) return;
+  setCollapsed(root, root.dataset.collapsed!=="1", true);
+});
 async function refresh(){
   try{
     const d=await (await fetch("/api/state",{credentials:"same-origin"})).json();
-    document.getElementById('app').style.maxWidth=(850+(d.columns||[]).length*100)+'px';
     const agentsRoot=document.querySelector('section[data-svc="agents"]');
     renderAgents(agentsRoot, d.agents, null, d.columns||[]); initCollapse(agentsRoot,"agents",0);
     const tables=document.getElementById("plugin-tables");
@@ -365,13 +584,12 @@ async function refresh(){
       box.innerHTML=""; d.services.forEach(()=>box.appendChild(tpl.content.cloneNode(true)));
     }
     const sections=box.querySelectorAll("section");
-    d.services.forEach((s,i)=>{ const root=sections[i]; q(root,".svc-name").textContent=s.name; renderService(root,s); initCollapse(root,s.name,i+1+(d.agent_tables||[]).length); });
-    document.getElementById("footer").textContent="updated "+new Date().toLocaleTimeString()+` · core v${d.core.version} (${d.core.state})`;
-  }catch(e){document.getElementById("footer").textContent="connection lost…";}
+    d.services.forEach((s,i)=>{ const root=sections[i]; q(root,".svc-name").textContent=serviceDisplayName(s.name); renderService(root,s); initCollapse(root,s.name,i+1+(d.agent_tables||[]).length); });
+    document.getElementById("footer").textContent="aktualizováno "+new Date().toLocaleTimeString(LOCALE)+(paused?" · pozastaveno":" · automatická obnova")+` · jádro v${d.core.version} (${d.core.state})`;
+  }catch(e){document.getElementById("footer").textContent="spojení ztraceno…";}
 }
 function copyText(text){
   if(navigator.clipboard && window.isSecureContext){ return navigator.clipboard.writeText(text); }
-  // Fallback for plain http (e.g. over a VPN IP): clipboard API needs a secure context.
   const ta=document.createElement("textarea"); ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
   document.body.appendChild(ta); ta.focus(); ta.select();
   try{ document.execCommand("copy"); }catch(e){} document.body.removeChild(ta);
@@ -386,39 +604,51 @@ function showToast(msg){
 document.addEventListener("click", e=>{
   const el=e.target.closest("[data-copy]"); if(!el) return;
   copyText(el.dataset.copy).then(()=>{
-    // Flash the element green + toast — no textContent swap, so column width never jumps.
     el.classList.add("copied-flash");
     setTimeout(()=>el.classList.remove("copied-flash"), 700);
-    showToast("✓ Copied to clipboard");
+    showToast("✓ Zkopírováno do schránky");
   });
 });
-// Restart / Stop buttons → POST /api/agent/action, then refresh. Stop asks for confirmation.
 document.addEventListener("click", async e=>{
   const btn=e.target.closest(".agent-act"); if(!btn) return;
   const name=btn.dataset.name, act=btn.dataset.act;
   if(btn.dataset.confirm && !confirm(btn.dataset.confirm)) return;
-  if(act==="stop" && !btn.dataset.confirm && !confirm(`Stop agent "${name}"? It won't be auto-restarted until you press ↻.`)) return;
+  if(act==="stop" && !btn.dataset.confirm && !confirm(`Zastavit agenta „${name}“? Nebude automaticky restartován, dokud nestisknete ↻.`)) return;
   btn.disabled=true; btn.classList.add("opacity-40");
-  showToast((btn.dataset.table?"Running action for ":act==="restart"?"↻ Restarting ":"✕ Stopping ")+name+"…");
+  showToast((btn.dataset.table?"Spouštím akci pro ":act==="restart"?"↻ Restartuji ":"✕ Zastavuji ")+name+"…");
   try{
     const r=await fetch("/api/agent/action",{method:"POST",credentials:"same-origin",
       headers:{"Content-Type":"application/json","X-Agentsmon":"action"},body:JSON.stringify({name,action:act,table:btn.dataset.table,row:btn.dataset.row})});
     const j=await r.json().catch(()=>({}));
-    showToast((j&&j.ok?"✓ ":"⚠ ")+((j&&j.message)||(r.ok?"done":"failed")));
+    showToast((j&&j.ok?"✓ ":"⚠ ")+((j&&j.message)||(r.ok?"hotovo":"selhalo")));
   }catch(err){ showToast("⚠ "+err); }
   setTimeout(refresh, act==="restart"?2500:600);
 });
-refresh(); setInterval(refresh, POLL*1000);
+function schedulePoll(){
+  clearInterval(pollTimer);
+  if(!paused) pollTimer=setInterval(refresh, POLL*1000);
+}
+document.getElementById("btn-refresh").addEventListener("click",()=>refresh());
+document.getElementById("btn-pause").addEventListener("click",ev=>{
+  paused=!paused;
+  ev.currentTarget.setAttribute("aria-pressed", paused?"true":"false");
+  ev.currentTarget.textContent=paused?"Obnovu spustit":"Pozastavit obnovu";
+  schedulePoll();
+  showToast(paused?"Automatická obnova pozastavena":"Automatická obnova běží");
+  refresh();
+});
+refresh(); schedulePoll();
 </script></body></html>"""
 
+
 PAGE=PAGE.replace('AGENT_TABLES',
-    AGENT_TABLE.replace('KEY','agents').replace('HIDDEN','').replace('TITLE','Persistent Agents')
-        .replace('NOTE','tmux sessions running an agent, linked by their <code>--resume</code> session id')+
+    AGENT_TABLE.replace('KEY','agents').replace('HIDDEN','').replace('TITLE','Persistentní agenti')
+        .replace('NOTE','tmux relace s agentem, propojené přes <code>--resume</code> session id')+
     '<div id="plugin-tables"></div>'+
     '<div id="plugin-loading" role="status" hidden class="mb-4 border border-slate-200 bg-slate-50 text-slate-600 rounded-lg p-3">'
-    'Plugins loading: Awaiting a fresh bounded check</div><div id="plugin-errors"></div>'+
+    'Načítání pluginů: čeká se na ohraničenou kontrolu</div><div id="plugin-errors"></div>'+
     '<template id="agent-table-tpl">'+AGENT_TABLE.replace('KEY','plugin').replace('HIDDEN','')
-        .replace('TITLE','Agents').replace('NOTE','')+'</template>')
+        .replace('TITLE','Agenti').replace('NOTE','')+'</template>')
 
 
 def _service_state(cfg: dict, running_agents: int = 0) -> list[dict]:
@@ -658,11 +888,52 @@ def _state() -> bytes:
         s["system_latency_ms"] = sysavg
         s["system_latency_n"] = len(lat_by_url)
     from .integrity import status as core_status
-    data = {"time": int(time.time()), "agents": agents, "agent_tables": extra['tables'],
-            "columns": extra['columns'], "plugin_errors": extra['errors'], "plugins": extra['plugins'],
+    data = {"time": int(time.time()), "agents": agents,
+            "agent_tables": _merge_tables_by_title(extra['tables']),
+            "columns": _merge_columns_by_title(extra['columns']),
+            "plugin_errors": extra['errors'], "plugins": extra['plugins'],
             "plugin_loading": extra.get('loading', False),
             "core": core_status(), "services": services}
     return json.dumps(data).encode()
+
+
+def _merge_columns_by_title(columns: list) -> list:
+    """Collapse plugin columns that share a display title (e.g. two plugins both emit 5h)."""
+    out, index = [], {}
+    for col in columns or []:
+        title = col.get("title") or col.get("id")
+        if title in index:
+            prev = out[index[title]]
+            aliases = list(prev.get("aliases") or [prev["id"]])
+            if col["id"] not in aliases:
+                aliases.append(col["id"])
+            prev["aliases"] = aliases
+        else:
+            index[title] = len(out)
+            item = dict(col)
+            item["aliases"] = [col["id"]]
+            out.append(item)
+    return out
+
+
+def _merge_tables_by_title(tables: list) -> list:
+    """One Provider-quotas section even when Codex + Cursor plugins both contribute."""
+    out, index = [], {}
+    for table in tables or []:
+        title = table.get("title") or table.get("id")
+        if title in index:
+            prev = out[index[title]]
+            prev["rows"] = list(prev.get("rows") or []) + list(table.get("rows") or [])
+            notes = [n for n in (prev.get("note"), table.get("note")) if n]
+            if notes:
+                prev["note"] = " ".join(dict.fromkeys(notes))
+            prev["up"] = bool(prev.get("up", True) and table.get("up", True))
+            if table.get("error"):
+                prev["error"] = ((prev.get("error") or "") + " " + table["error"]).strip()
+        else:
+            index[title] = len(out)
+            out.append(dict(table))
+    return out
 
 
 def _probe_loop(stop: threading.Event) -> None:
@@ -682,12 +953,23 @@ def _loopback(host: str) -> bool:
 
 
 def require_auth_or_die(host: str, cfg: dict) -> None:
-    """Fail closed: a dashboard reachable from anything but loopback must have HTTP auth
-    configured (audit 2026-09-08). Without it anyone on that network could stop or restart
-    agents. `agentsmon setup` sets dashboard.auth; loopback-only installs stay optional."""
+    """Require login off-loopback unless an administrator opts into a private LAN bind.
+
+    The LAN exception requires a specific RFC1918 IPv4 address and an actual boolean;
+    administrators must restrict incoming clients with the host firewall.
+    Use ``agentsmon setup`` to review bind/auth options.
+    """
     auth = cfg.get("dashboard", {}).get("auth") or {}
     if _loopback(host) or (auth.get("user") and auth.get("pwhash")):
         return
+    if cfg.get("dashboard", {}).get("allow_unauthenticated_lan") is True:
+        try:
+            address = ipaddress.IPv4Address(host)
+            if any(address in ipaddress.IPv4Network(network) for network in
+                   ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")):
+                return
+        except ipaddress.AddressValueError:
+            pass
     raise SystemExit(
         f"refusing to listen on {host} without dashboard.auth (user + pwhash) in the config — "
         "the page can stop and restart agents. Bind 127.0.0.1 or set the password via `agentsmon setup`."

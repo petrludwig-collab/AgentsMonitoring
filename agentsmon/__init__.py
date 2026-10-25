@@ -4,4 +4,4 @@ A tiny, dependency-free supervisor + status dashboard for AI coding agents runni
 (Claude Code, Codex, …) plus background daemons (OpenClaw, Hermes, …). It auto-detects what's
 running, shows a live status page, and restarts anything that dies — surviving reboots.
 """
-__version__ = "0.3.12"
+__version__ = "0.3.14"
