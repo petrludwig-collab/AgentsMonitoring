@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `agentsmon status` and a single keepalive pass no longer report a daemon as running only because its process pattern also matches their own command line (for example a virtualenv path shared with the daemon). pgrep already left out itself, but not the Python process that called it. Only that one PID is left out, and only by these two commands: parents and children of the check, `keepalive --loop` (which may itself be a configured service) and direct library calls still count their own process. Daemons with a `manager` or `bridge_config` and the `health_url` check are unchanged.
+
 ## 0.3.12 (2026-10-22)
 
 - The login hint for a Claude agent quotes the session name, so `tmux attach -t "T - Claude"` works when pasted. A test checks every attach hint.

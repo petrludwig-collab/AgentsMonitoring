@@ -17,10 +17,10 @@ def _fmt_age(sec) -> str:
     return f"{m}m"
 
 
-def render(cfg: dict | None = None) -> str:
+def render(cfg: dict | None = None, ignore_pid: int | None = None) -> str:
     cfg = cfg or config.load()
     agents = detect.configured_agents(cfg)
-    daemons = detect.daemon_status(cfg.get("daemons", []))
+    daemons = detect.daemon_status(cfg.get("daemons", []), ignore_pid=ignore_pid)
     lines = ["", "  AGENTS (tmux)"]
     if not agents:
         lines.append("    (no tmux sessions found — is tmux running?)")
