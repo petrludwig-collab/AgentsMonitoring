@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 
@@ -43,13 +44,17 @@ def main(argv=None) -> int:
     un.add_argument("--yes", action="store_true")
     args = p.parse_args(argv)
 
+    # `status` and a single keepalive pass are short-lived processes of their own: they must not
+    # count themselves as a daemon whose pattern matches their command line. `keepalive --loop`
+    # may itself be a configured service, and a library caller may be any long-running process,
+    # so those keep counting their own process.
     if args.command == "status":
         from . import status
-        print(status.render())
+        print(status.render(ignore_pid=os.getpid()))
         return 0
     if args.command == "keepalive":
         from . import keepalive
-        return keepalive.run(loop=args.loop)
+        return keepalive.run(loop=args.loop, ignore_pid=None if args.loop else os.getpid())
     if args.command == "dashboard":
         from . import dashboard, config
         cfg = config.load()

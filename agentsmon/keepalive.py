@@ -114,7 +114,7 @@ def _start(agent: dict, tmux_bin: str, recreate: bool = False) -> None:
                        capture_output=True, timeout=10)
 
 
-def tick(cfg: dict) -> int:
+def tick(cfg: dict, ignore_pid: int | None = None) -> int:
     """One supervision pass. Returns the number of restarts performed."""
     tmux_bin = shutil.which(cfg.get("tmux_bin", "tmux")) or "tmux"
     sessions = {s["name"]: s for s in detect.tmux_sessions()}
@@ -160,7 +160,7 @@ def tick(cfg: dict) -> int:
         _start(safe, tmux_bin, recreate=recreate)
         restarts += 1
     _save_attempts(attempts)
-    for d in detect.daemon_status(cfg.get("daemons", [])):
+    for d in detect.daemon_status(cfg.get("daemons", []), ignore_pid=ignore_pid):
         spec = next((x for x in cfg.get("daemons", []) if x.get("name") == d["name"]), {})
         if not spec.get("enabled", True):
             continue                       # explicitly stopped from the dashboard — don't revive it
@@ -173,7 +173,7 @@ def tick(cfg: dict) -> int:
     return restarts
 
 
-def run(loop: bool = False) -> int:
+def run(loop: bool = False, ignore_pid: int | None = None) -> int:
     cfg = config.load()
     interval = cfg.get("keepalive", {}).get("interval_seconds", 60)
     while True:
@@ -184,7 +184,7 @@ def run(loop: bool = False) -> int:
             return 0                   # no agent restarts or heartbeat when disabled
         if _acquire_lock():
             try:
-                n = tick(cfg)
+                n = tick(cfg, ignore_pid=ignore_pid)
                 if n:
                     _log(f"pass complete: {n} restart(s)")
                 _heartbeat()

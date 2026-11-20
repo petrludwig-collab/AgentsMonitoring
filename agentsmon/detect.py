@@ -890,8 +890,13 @@ def _http_ok(url: str, timeout: float = 4) -> bool:
         return False
 
 
-def daemon_status(daemons: list[dict]) -> list[dict]:
+def daemon_status(daemons: list[dict], ignore_pid: int | None = None) -> list[dict]:
     """For each configured daemon ({name, pattern, health_url?}), is it running / healthy?
+
+    ``pgrep`` leaves out its own PID but not the process that called it. The one-shot CLI checks
+    (``agentsmon status``, ``agentsmon keepalive`` without ``--loop``) pass their own PID as
+    *ignore_pid* so that a pattern that also matches their command line does not report a missing
+    daemon as running. Only that one PID is left out; parents and children of the check still count.
 
     When a daemon advertises a ``health_url`` the health check is authoritative for ``up`` —
     the process pattern is NOT required to match. Process command lines differ across install
@@ -910,6 +915,8 @@ def daemon_status(daemons: list[dict]) -> list[dict]:
         else:
             process = _run(['pgrep','-u',str(os.getuid()),'-f','--',pat]) if pat else None
             proc_up = bool(process and process.returncode == 0)
+            if proc_up and ignore_pid is not None:
+                proc_up = any(p != str(ignore_pid) for p in process.stdout.split())
         entry = {"name": d.get("name", pat), "pattern": pat, "process_up": proc_up}
         url = d.get("health_url")
         if url:
