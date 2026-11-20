@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A restart is reported as successful only after the agent process is seen running in its tmux session again. Keepalive looks for the launched process for 15 s (one window for all agents of one pass; a look that has started is finished, so this is not a hard limit) and logs "restart confirmed" with its PID, "restart NOT confirmed" or "restart failed" instead of counting every attempt. A tmux send-keys that times out may still have typed the command, so that restart is decided by the process too (confirmed or NOT confirmed) and the command is not typed again; a timeout before the command is sent is a failed restart. A bare shell, a typed command, a program that exits at once or a matching process outside the session no longer counts. The dashboard ↻ and `agentsmon restart` report the same result (the CLI exits 1 when a restart is not confirmed). The retry policy between passes is unchanged.
+
 ## 0.3.12 (2026-10-22)
 
 - The login hint for a Claude agent quotes the session name, so `tmux attach -t "T - Claude"` works when pasted. A test checks every attach hint.

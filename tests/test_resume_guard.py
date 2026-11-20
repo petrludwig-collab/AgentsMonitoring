@@ -33,7 +33,9 @@ class ResumeGuard(unittest.TestCase):
              patch.object(dashboard.detect,'discover_agents',return_value=[
                  {**agent,'alive':True,'session_id':None,'resume_cmd':None}]), \
              patch.object(dashboard,'_set_enabled') as enabled, \
-             patch.object(keepalive,'_start') as start:
+             patch.object(keepalive,'_start',return_value={'name':'Writer','state':'sent'}) as start, \
+             patch.object(keepalive,'_confirm',side_effect=lambda ls:[{**x,'state':'confirmed','pid':1} for x in ls]), \
+             patch.object(keepalive,'_log'):
             ok, message = dashboard._agent_action('Writer','restart')
         self.assertTrue(ok)
         self.assertIn('Fresh', message)

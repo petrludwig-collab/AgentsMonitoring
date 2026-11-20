@@ -19,7 +19,9 @@ class FreshRecovery(unittest.TestCase):
              patch.object(keepalive.detect,'discover_agents',return_value=[]), \
              patch.object(keepalive.detect,'tmux_sessions',return_value=[]), \
              patch.object(keepalive.detect,'_proc_table',return_value=({},{})), \
-             patch.object(keepalive,'_log') as log, patch.object(keepalive,'_start') as start:
+             patch.object(keepalive,'_log') as log, \
+             patch.object(keepalive,'_start',return_value={'name':'Writer','state':'sent'}) as start, \
+             patch.object(keepalive,'_confirm',side_effect=lambda ls:[{**x,'state':'confirmed','pid':1} for x in ls]):
             self.assertEqual(keepalive.tick(cfg),1)
             launch = shlex.split(start.call_args.args[0]['restart'])
             self.assertNotIn('--continue',launch)

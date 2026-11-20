@@ -608,8 +608,17 @@ def _agent_action(name: str, action: str) -> tuple[bool, str]:
             identity.record_restart(agent)
             if agent.get('restart_warning'):
                 keepalive._log(f"agent '{name}': WARNING: {agent['restart_warning']}")
-            keepalive._start(agent, tmux_bin, recreate=True)   # kill session + recreate + resume cmd
-            return True, agent.get('restart_warning') or f"restarting {name}"
+            launch = keepalive._start(agent, tmux_bin, recreate=True)   # kill + recreate + resume cmd
+            launch = keepalive._confirm([launch])[0]
+            keepalive._log(keepalive._verdict(launch))
+            ok = launch['state'] == 'confirmed'
+            message = (f"restarted {name} (agent process confirmed)" if ok else
+                       f"{name}: restart {'failed' if launch['state'] == 'failed' else 'not confirmed'}"
+                       f" – {launch.get('detail', '')}")
+            if launch.get('note'):
+                message += f" ({launch['note']})"
+            warning = agent.get('restart_warning')
+            return ok, (warning + ' ' + message) if warning else message
         from . import managed
         return managed.action(daemon, 'restart')
     if action == "stop":
