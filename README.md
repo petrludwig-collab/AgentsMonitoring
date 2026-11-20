@@ -28,6 +28,8 @@ tmux sessions  ⇄  Agents Monitoring  ⇄  status page + keepalive
   D-Bus / login-session requirement (the usual "Failed to connect to bus" trap).
 - **Restarts the right way** — a tmux session can outlive a crashed agent; we detect that and
   relaunch the agent (e.g. `claude --resume <id>`), not just recreate an empty shell.
+  A restart counts only once the agent process is seen running in its session again (within
+  15 s); otherwise the keepalive log, the dashboard and `agentsmon restart` say it was not confirmed.
 
 ---
 
