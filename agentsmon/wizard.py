@@ -452,8 +452,8 @@ def add() -> int:
     candidates = _scan_candidates(known)
     from . import managed
     for current in cfg.get('daemons', []):
-        if not current.get('enabled', True):
-            continue  # An explicit stop is not a broken service installation.
+        if config.enabled_error(current) or not current.get('enabled', True):
+            continue  # An explicit stop is not a broken service installation, nor an unreadable one.
         defaults = next((d for d in COMMON_DAEMONS if d['name'] == current.get('name')), {})
         owner = managed.discover({**defaults, **current})
         if owner and owner.get('type') == 'systemd':
@@ -672,7 +672,10 @@ def run() -> int:
         old_pin = next((p for p in previous.get('pinned_daemons', []) if p['name'] == d['name']), {})
         pin.update(old_pin)
         pin['enabled'] = dmn.get('enabled', True)
-        if dmn.get('manager') and dmn.get('enabled', True):
+        invalid = config.enabled_error(dmn)
+        if invalid:
+            print(f"  ✗ daemon '{dmn['name']}': {invalid} — its service is not activated")
+        elif dmn.get('manager') and dmn.get('enabled', True):
             from . import managed
             ok, notes = managed.activate(dmn['manager'])
             for note in notes:

@@ -29,12 +29,20 @@ def run() -> int:
     from . import identity
     warnings = identity.restart_warnings(cfg)
     for a in cfg.get("agents", []):
-        if a.get("enabled", True) and not a.get("restart") and not identity.fresh_command(a):
+        invalid = config.enabled_error(a)
+        if invalid:
+            print(f"  ✗ agent '{a.get('name')}': {invalid} — keepalive does not restart it")
+            ok = False
+        elif a.get("enabled", True) and not a.get("restart") and not identity.fresh_command(a):
             print(f"  ⚠️  '{a['name']}' has no restart command — it can't be revived if it dies.")
         if a['name'] in warnings:
             print(f"  Warning: {a['name']}: {warnings[a['name']]}")
     from . import managed
     for daemon in cfg.get('daemons', []):
+        invalid = config.enabled_error(daemon)
+        if invalid:
+            print(f"  ✗ daemon '{daemon.get('name')}': {invalid} — keepalive does not restart it")
+            ok = False
         for warning in managed.warnings(daemon):
             print('  Warning: '+warning)
             ok = False
