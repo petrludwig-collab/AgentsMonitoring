@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Keepalive passes no longer overlap when one pass runs longer than five minutes. The pass lock is now an exclusive `flock` on `keepalive.flock` in the state directory, held from the start of the pass to its heartbeat, released when the pass ends, and freed by the system when the process dies; nothing is taken over by age and the file is never removed, so an earlier pass cannot unlock a later one. Programs a pass starts do not inherit it. A lock that cannot be taken for another reason (for example a filesystem without `flock`) is logged and the pass is not run (a single pass exits with status 1, `--loop` tries again at its next interval) instead of being reported as another run. A `keepalive.lock` directory left by an older version is reported the same way and left alone, because its pass may still be running. Old and new versions do not see each other's lock, so switch versions in either direction only with no keepalive of the other version running: stop a `keepalive --loop` and let a pass in progress finish (the cron launcher starts the installed version from its next run). After upgrading, remove `keepalive.lock` from the state directory if it is still there; an older version ignores `keepalive.flock`.
+
 ## 0.3.12 (2026-10-22)
 
 - The login hint for a Claude agent quotes the session name, so `tmux attach -t "T - Claude"` works when pasted. A test checks every attach hint.

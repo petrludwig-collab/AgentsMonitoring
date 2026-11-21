@@ -4,11 +4,13 @@ For each configured agent we check two things: does its tmux **session** exist, 
 **agent process** actually alive inside it (a session can survive while the agent crashed to a
 bare shell). If the session is gone we recreate it and launch the agent; if the agent died in a
 surviving session we re-send the launch command. Daemons with a ``restart`` command are
-relaunched when down. A directory lock prevents overlapping runs (it's safe to call every minute
-from cron/systemd/launchd).
+relaunched when down. A lock held for the whole pass prevents overlapping runs (it's safe to call
+every minute from cron/systemd/launchd).
 """
 from __future__ import annotations
 
+import errno
+import fcntl
 import json
 import os
 import shutil
@@ -61,28 +63,58 @@ def _heartbeat() -> None:
         pass
 
 
-def _acquire_lock(stale: int = 300) -> bool:
-    """Directory lock; steal it if older than *stale* seconds (a crashed previous run)."""
-    lock = config.state_dir() / "keepalive.lock"
-    try:
-        lock.mkdir()
-        return True
-    except FileExistsError:
-        try:
-            if time.time() - lock.stat().st_mtime > stale:
-                lock.rmdir()
-                lock.mkdir()
-                return True
-        except OSError:
-            pass
-        return False
+LOCK_NAME = "keepalive.flock"
+LEGACY_LOCK_NAME = "keepalive.lock"
 
 
-def _release_lock() -> None:
+class LockError(Exception):
+    """The pass lock could not be taken for a reason other than another running pass."""
+
+
+def _acquire_lock() -> int | None:
+    """Take the pass lock: an exclusive ``flock`` on a file that stays in place.
+
+    Returns the open descriptor, which holds the lock until ``_release_lock`` or until the process
+    ends (also when it is killed), so a long pass never looks stale. Returns None when another
+    pass holds it. Raises LockError for anything else, so a pass never runs unprotected. The
+    descriptor is not inherited by programs a pass starts (Python opens it close-on-exec).
+
+    Versions before this one used a ``keepalive.lock`` directory and took it over after five
+    minutes. Such a directory may belong to an older pass that is still running, so it is
+    reported and left alone, never removed here.
+    """
+    state = config.state_dir()
+    path = state / LOCK_NAME
     try:
-        (config.state_dir() / "keepalive.lock").rmdir()
-    except OSError:
-        pass
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError as exc:
+        raise LockError(f"cannot open {path}: {exc}") from exc
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        os.close(fd)
+        if exc.errno in (errno.EWOULDBLOCK, errno.EAGAIN):
+            return None
+        raise LockError(f"cannot lock {path}: {exc}") from exc
+    legacy = state / LEGACY_LOCK_NAME
+    try:
+        os.lstat(legacy)
+    except FileNotFoundError:
+        return fd
+    except OSError as exc:
+        _release_lock(fd)
+        raise LockError(f"cannot check {legacy}: {exc}") from exc
+    _release_lock(fd)
+    raise LockError(f"{legacy} is left from an older agentsmon version, whose keepalive pass may "
+                    f"still be running; once no older keepalive runs, remove it")
+
+
+def _release_lock(fd: int) -> None:
+    """Unlock and close; the file itself stays, so every pass locks the same file."""
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def _alive(name: str, match_kw: str, sessions: dict, children: dict, procs: dict) -> tuple[bool, bool]:
@@ -182,16 +214,23 @@ def run(loop: bool = False) -> int:
             _log("updated installed cron launcher")
         if not cfg.get("keepalive", {}).get("enabled", True):
             return 0                   # no agent restarts or heartbeat when disabled
-        if _acquire_lock():
+        rc = 0
+        try:
+            lock = _acquire_lock()
+        except LockError as exc:
+            _log(f"cannot take the keepalive lock, pass not run: {exc}")
+            lock, rc = None, 1
+        else:
+            if lock is None:
+                _log("another keepalive run holds the lock — skipping")
+        if lock is not None:
             try:
                 n = tick(cfg)
                 if n:
                     _log(f"pass complete: {n} restart(s)")
                 _heartbeat()
             finally:
-                _release_lock()
-        else:
-            _log("another keepalive run holds the lock — skipping")
+                _release_lock(lock)
         if not loop:
-            return 0
+            return rc
         time.sleep(interval)
