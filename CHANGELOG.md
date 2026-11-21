@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Keepalive no longer restarts an agent or daemon whose `enabled` is not JSON `true` or `false`. Before, any value Python reads as true counted as enabled, so `"enabled": "false"` or `1` kept an item supervised that was meant to be off. Such an entry is now neither on nor off: keepalive logs `'enabled' must be true or false` with the entry's name on every pass and leaves it alone (no restart command, tmux session or service action), `agentsmon doctor` reports it and exits with status 1, `agentsmon restart --all` skips it with the same message, `agentsmon setup` does not activate its user service and says why, and `agentsmon add` does not offer it for service repair. The value is not converted and the config is not rewritten. `true`, `false` and an omitted `enabled` work as before, and the other entries are still supervised in the same pass.
+
 ## 0.3.12 (2026-10-22)
 
 - The login hint for a Claude agent quotes the session name, so `tmux attach -t "T - Claude"` works when pasted. A test checks every attach hint.

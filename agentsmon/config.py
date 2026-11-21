@@ -135,6 +135,19 @@ def save(cfg: dict, path: Path | None = None) -> Path:
     return path
 
 
+def enabled_error(entry: dict) -> str | None:
+    """Why an agent's or daemon's ``enabled`` cannot be read, or None when it is JSON true/false
+    or absent. ``"false"`` is not false and ``1`` is not true: such an entry is neither on nor off,
+    so callers do not restart it and report this message (it names the JSON type, not the value)."""
+    value = entry.get("enabled", True)
+    if isinstance(value, bool):
+        return None
+    kind = ("null" if value is None else "a string" if isinstance(value, str)
+            else "a number" if isinstance(value, (int, float)) else "a list" if isinstance(value, list)
+            else "an object" if isinstance(value, dict) else type(value).__name__)
+    return f"'enabled' must be true or false, not {kind}"
+
+
 def agent_matches(cfg: dict) -> list[tuple]:
     """Turn config agents' ``match`` keywords into (kind, label, compiled-regex) for the classifier."""
     out = []

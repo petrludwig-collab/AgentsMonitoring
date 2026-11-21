@@ -131,6 +131,10 @@ def tick(cfg: dict) -> int:
         except (OSError, ValueError):
             pass
     for a in cfg.get("agents", []):
+        invalid = config.enabled_error(a)
+        if invalid:
+            _log(f"agent '{a.get('name')}': {invalid} — not restarted")
+            continue
         if not a.get("enabled", True):
             continue
         name = a["name"]
@@ -162,6 +166,10 @@ def tick(cfg: dict) -> int:
     _save_attempts(attempts)
     for d in detect.daemon_status(cfg.get("daemons", [])):
         spec = next((x for x in cfg.get("daemons", []) if x.get("name") == d["name"]), {})
+        invalid = config.enabled_error(spec)
+        if invalid:
+            _log(f"daemon '{d['name']}': {invalid} — not restarted")
+            continue
         if not spec.get("enabled", True):
             continue                       # explicitly stopped from the dashboard — don't revive it
         if not d["up"] and (spec.get("restart") or spec.get('manager')):
